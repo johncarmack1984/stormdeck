@@ -6,11 +6,13 @@ import {
   RemovalPolicy,
   Stack,
   StackProps,
+  aws_certificatemanager as acm,
   aws_cloudfront as cloudfront,
   aws_cloudfront_origins as origins,
   aws_iam as iam,
   aws_lambda as lambda,
   aws_route53 as route53,
+  aws_route53_targets as r53targets,
   aws_s3 as s3,
   aws_scheduler as scheduler,
   aws_scheduler_targets as targets,
@@ -27,23 +29,13 @@ const WORLD_KEY = 'pmtiles/world.pmtiles';
 
 // stormdeck.live — registered in this account via Route 53 Domains
 // (2026-06-12); registration auto-created the hosted zone, referenced
-// here by id so synth stays env-agnostic (no fromLookup). The web app
-// lives on GitHub Pages, so the apex points at Pages' anycast set:
-// https://docs.github.com/pages → "managing a custom domain".
+// here by id so synth stays env-agnostic (no fromLookup).
 const DOMAIN = 'stormdeck.live';
 const HOSTED_ZONE_ID = 'Z05419711L0SGJDJ4NEL1';
-const GITHUB_PAGES_A = [
-  '185.199.108.153',
-  '185.199.109.153',
-  '185.199.110.153',
-  '185.199.111.153',
-];
-const GITHUB_PAGES_AAAA = [
-  '2606:50c0:8000::153',
-  '2606:50c0:8001::153',
-  '2606:50c0:8002::153',
-  '2606:50c0:8003::153',
-];
+// Issued by the StormdeckCert stack (us-east-1 — CloudFront cert rule);
+// pinned by ARN so this stack stays env-agnostic and synths offline.
+const CERT_ARN_US_EAST_1 =
+  'arn:aws:acm:us-east-1:735853783919:certificate/bcda4335-406a-4aaf-be34-ab9aba18622d';
 
 const MARTIN_ZIP = path.join(__dirname, '../../build/martin-lambda.zip');
 const WEATHER_ZIP = path.join(
@@ -147,27 +139,45 @@ export class StormdeckStack extends Stack {
       },
     });
 
-    // Single distribution, both on always-free tiers:
-    //   default behavior  -> martin Lambda function URL (tiles, tilejson, /catalog)
-    //   weather/*         -> S3 weather snapshots
+    // Single distribution, one origin set, everything same-origin under
+    // stormdeck.live (which is what lets the browser skip CORS entirely):
+    //   default behavior          -> S3 site/ (the built web app)
+    //   catalog, region*, world*  -> martin Lambda function URL
+    //   weather/*                 -> S3 weather snapshots
     // withOriginAccessControl wires the OACs, the lambda invoke permission,
     // and the bucket policy (the L2 grants the distribution GetObject on all
-    // objects, conditioned on this distribution's ARN; only the weather/*
-    // behavior routes to S3, so the reachable surface is weather/* anyway).
+    // objects, conditioned on this distribution's ARN).
+    const martinOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(martinUrl);
+    const martinBehavior: cloudfront.BehaviorOptions = {
+      origin: martinOrigin,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+      cachePolicy: tilesCache,
+      // Function URLs 403 if the Host header is forwarded.
+      originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+      responseHeadersPolicy: tilesHeaders,
+    };
     const cdn = new cloudfront.Distribution(this, 'Cdn', {
       comment: PROJECT,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
+      domainNames: [DOMAIN, `www.${DOMAIN}`],
+      certificate: acm.Certificate.fromCertificateArn(this, 'SiteCert', CERT_ARN_US_EAST_1),
+      defaultRootObject: 'index.html',
       defaultBehavior: {
-        origin: origins.FunctionUrlOrigin.withOriginAccessControl(martinUrl),
+        // deploy-web syncs the built app here: hashed assets immutable,
+        // index.html no-cache (browser caching rides those object headers;
+        // CachingOptimized honors origin Cache-Control).
+        origin: origins.S3BucketOrigin.withOriginAccessControl(bucket, {
+          originPath: '/site',
+        }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        cachePolicy: tilesCache,
-        // Function URLs 403 if the Host header is forwarded.
-        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-        responseHeadersPolicy: tilesHeaders,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
       additionalBehaviors: {
+        catalog: martinBehavior,
+        'region*': martinBehavior,
+        'world*': martinBehavior,
         'weather/*': {
           origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -190,24 +200,39 @@ export class StormdeckStack extends Stack {
       }),
     });
 
-    // DNS: apex + www → GitHub Pages, which serves the web app and
-    // provisions the Let's Encrypt cert for the custom domain.
+    // DNS: apex + www → this distribution. (Logical ids still say Pages
+    // from the brief GitHub Pages era — kept so the cutover updated the
+    // live records in place instead of delete/create racing them.)
     const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
       hostedZoneId: HOSTED_ZONE_ID,
       zoneName: DOMAIN,
     });
-    new route53.ARecord(this, 'PagesA', {
-      zone,
-      target: route53.RecordTarget.fromIpAddresses(...GITHUB_PAGES_A),
-    });
-    new route53.AaaaRecord(this, 'PagesAaaa', {
-      zone,
-      target: route53.RecordTarget.fromIpAddresses(...GITHUB_PAGES_AAAA),
-    });
+    const cdnAlias = route53.RecordTarget.fromAlias(
+      new r53targets.CloudFrontTarget(cdn),
+    );
+    new route53.ARecord(this, 'PagesA', { zone, target: cdnAlias });
+    new route53.AaaaRecord(this, 'PagesAaaa', { zone, target: cdnAlias });
     new route53.CnameRecord(this, 'PagesWww', {
       zone,
       recordName: 'www',
-      domainName: 'johncarmack1984.github.io',
+      domainName: cdn.distributionDomainName,
+    });
+    // ACM validation for the pinned us-east-1 cert — renewal re-checks
+    // these forever, so they belong in IaC. (The cert was requested via
+    // CLI after CloudFormation's ACM wrapper failed on this fresh zone;
+    // gotcha for next time: ACM honors CAA through CNAMEs, so www could
+    // not validate while it still pointed at github.io.)
+    new route53.CnameRecord(this, 'CertValidationApex', {
+      zone,
+      recordName: '_09bacf8136e88e3c69f28bf8b48332bc',
+      domainName:
+        '_a169af4dedae84057cfee7dac1dc6da0.jkddzztszm.acm-validations.aws.',
+    });
+    new route53.CnameRecord(this, 'CertValidationWww', {
+      zone,
+      recordName: '_ec5637aaa3b96d5ba26b7e1c07be2ad5.www',
+      domainName:
+        '_24aac96f6e7f3ed29da372d7c827eca0.jkddzztszm.acm-validations.aws.',
     });
 
     // EventBridge Scheduler triggers (14M invocations/month free tier).

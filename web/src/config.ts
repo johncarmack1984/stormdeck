@@ -1,4 +1,5 @@
-/** Base URL of the CloudFront distribution (martin tiles + weather JSON). */
+/** Empty in production — the site, tiles and weather share one origin,
+ * so every fetch is relative. Dev points at the local martin. */
 export const API_BASE: string =
   import.meta.env.VITE_API_BASE ?? 'http://localhost:3030';
 
@@ -6,8 +7,8 @@ export const API_BASE: string =
 export const WEATHER_BASE: string =
   import.meta.env.VITE_WEATHER_BASE ?? API_BASE;
 
-/** Should sit inside the BBOX the tiles were extracted for (default: DFW). */
-export const INITIAL_VIEW = { longitude: -97.0, latitude: 32.8, zoom: 8 };
+/** Whole-world start; a URL hash (shareable view) overrides this. */
+export const INITIAL_VIEW = { longitude: -97.0, latitude: 32.8, zoom: 0 };
 
 /** Below this zoom the coarse global conditions lattice renders; at or
  * above it, the fine regional grid takes over. */

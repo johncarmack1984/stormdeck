@@ -52,6 +52,33 @@ export class GithubOidcStack extends Stack {
       }),
     );
 
+    // deploy-web syncs the built app straight to the bucket's site/
+    // prefix and invalidates the distribution — no CDK roles involved.
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'SyncSitePrefix',
+        actions: ['s3:PutObject', 's3:DeleteObject'],
+        resources: [`arn:aws:s3:::stormdeck-${this.account}/site/*`],
+      }),
+    );
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'ListBucketForSiteSync',
+        actions: ['s3:ListBucket'],
+        resources: [`arn:aws:s3:::stormdeck-${this.account}`],
+        conditions: { StringLike: { 's3:prefix': 'site/*' } },
+      }),
+    );
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'InvalidateSite',
+        actions: ['cloudfront:CreateInvalidation'],
+        resources: [
+          `arn:aws:cloudfront::${this.account}:distribution/*`,
+        ],
+      }),
+    );
+
     new CfnOutput(this, 'DeployRoleArn', {
       value: role.roleArn,
       description: 'Set as the AWS_DEPLOY_ROLE_ARN repo variable',

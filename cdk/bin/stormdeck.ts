@@ -4,6 +4,9 @@ import { StormdeckStack } from '../lib/stormdeck-stack';
 
 // Env-agnostic on purpose: synth needs no AWS account; the account/region
 // are resolved by whatever profile runs `cdk deploy`.
+// (The stormdeck.live cert is NOT a stack: requested once via the ACM
+// CLI in us-east-1 and pinned by ARN in stormdeck-stack.ts, after
+// CloudFormation's ACM wrapper proved flaky on the fresh hosted zone.)
 const app = new App();
 new StormdeckStack(app, 'StormdeckStack');
 // Deployed once, locally, with admin creds; CI only touches StormdeckStack.

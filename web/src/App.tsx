@@ -126,8 +126,14 @@ export default function App() {
     <div className="fixed inset-0">
       <Map
         initialViewState={INITIAL_VIEW}
+        // Shareable views: maplibre mirrors #zoom/lat/lng into the URL
+        // and reads it back on load (beating INITIAL_VIEW when present).
+        hash
         mapStyle={style}
         style={{ width: '100%', height: '100%' }}
+        // A hash can land the map far from INITIAL_VIEW; sync the zoom
+        // state once the real camera exists.
+        onLoad={(e) => setZoom(e.target.getZoom())}
         onMoveEnd={(e: ViewStateChangeEvent) => setZoom(e.viewState.zoom)}
         attributionControl={{
           compact: false,
