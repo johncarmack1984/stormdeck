@@ -1,0 +1,14 @@
+# Toolchain — `mise install` fetches everything here; the aws CLI is the
+# one prereq left to you (it needs your credentials anyway). node tracks
+# LTS to match CI (workflows pin lts/*).
+
+[tools]
+node = "lts"
+pnpm = "latest"
+rust = "stable"
+just = "latest"
+"ubi:cargo-lambda/cargo-lambda" = "latest"
+"ubi:protomaps/go-pmtiles" = { version = "latest", exe = "pmtiles" }
+# martin's repo tags several components (martin-v*, mbtiles-v*, …);
+# without the filter "latest" can land on a tag with no martin binaries
+"ubi:maplibre/martin" = { version = "latest", exe = "martin", tag_regex = "^martin-v" }

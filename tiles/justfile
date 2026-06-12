@@ -1,0 +1,13 @@
+# OSM basemap extracts (PMTiles): bbox detail + z0-6 world context.
+# Runs from this directory or as the root 'tiles' module.
+
+import '../.just/common.just'
+
+# Cut both extracts from the daily protomaps build
+extract:
+    "{{ root }}/scripts/get-tiles.sh" "{{ bbox }}" "{{ tiles_file }}" "{{ world_file }}"
+
+# Upload both extracts to the deployed bucket (stormdeck-<account>)
+upload:
+    aws s3 cp "{{ tiles_file }}" "s3://stormdeck-$(aws sts get-caller-identity {{ profile_flag }} --query Account --output text)/pmtiles/region.pmtiles" {{ profile_flag }}
+    aws s3 cp "{{ world_file }}" "s3://stormdeck-$(aws sts get-caller-identity {{ profile_flag }} --query Account --output text)/pmtiles/world.pmtiles" {{ profile_flag }}

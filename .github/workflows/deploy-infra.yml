@@ -1,0 +1,59 @@
+name: deploy-infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cdk/**'
+      - 'crates/**'
+      - 'scripts/build-martin-lambda.sh'
+      - '.github/workflows/deploy-infra.yml'
+  workflow_dispatch:
+
+# No AWS keys anywhere: the job assumes the stormdeck-github-deploy role
+# (StormdeckGithubOidc stack) via GitHub's OIDC token, trust-scoped to
+# pushes on this repo's main branch.
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: deploy-infra
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      - name: Build lambda zips
+        run: |
+          cargo lambda build --manifest-path crates/Cargo.toml --release --arm64 \
+            --output-format zip -p weather-ingest
+          scripts/build-martin-lambda.sh build/martin-lambda.zip
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: cdk/pnpm-lock.yaml
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: cdk deploy
+        working-directory: cdk
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec cdk deploy StormdeckStack --require-approval never

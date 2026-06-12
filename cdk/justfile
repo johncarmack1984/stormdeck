@@ -1,0 +1,34 @@
+# The IaC: CloudFormation holds state, CI deploys on push to main via
+# the OIDC role. Runs from this directory or as the root 'cdk' module.
+
+import '../.just/common.just'
+
+# Synthesize offline (run 'just build lambdas' first)
+synth:
+    pnpm exec cdk synth --quiet
+
+# One-time per account+region: CDK staging bucket + roles
+bootstrap:
+    pnpm exec cdk bootstrap "aws://$(aws sts get-caller-identity {{ profile_flag }} --query Account --output text)/{{ region }}" {{ profile_flag }}
+
+# Afterwards: gh variable set AWS_DEPLOY_ROLE_ARN --body "$(just cdk output DeployRoleArn StormdeckGithubOidc)"
+# Deploy a stack: 'app' (CI does this via OIDC on push to main) or
+# 'oidc' (the GitHub Actions deploy role — one-time, local admin creds)
+deploy target="app":
+    AWS_REGION={{ region }} pnpm exec cdk deploy {{ if target == "app" { "StormdeckStack" } else if target == "oidc" { "StormdeckGithubOidc --require-approval never" } else { error("target must be 'app' or 'oidc'") } }} {{ profile_flag }}
+
+# Preview the app stack against the account (needs AWS creds + bootstrap)
+diff:
+    AWS_REGION={{ region }} pnpm exec cdk diff StormdeckStack {{ profile_flag }}
+
+# All deployed stack outputs, as a table
+outputs stack="StormdeckStack":
+    aws cloudformation describe-stacks --stack-name {{ stack }} --region {{ region }} {{ profile_flag }} --query 'Stacks[0].Outputs' --output table
+
+# One output value, raw (for scripting: ApiBase, BucketName, …)
+output key stack="StormdeckStack":
+    @aws cloudformation describe-stacks --stack-name {{ stack }} --region {{ region }} {{ profile_flag }} --query "Stacks[0].Outputs[?OutputKey=='{{ key }}'].OutputValue" --output text
+
+# Tear the app stack down (bucket auto-empties; OIDC stack survives)
+destroy:
+    AWS_REGION={{ region }} pnpm exec cdk destroy StormdeckStack {{ profile_flag }}

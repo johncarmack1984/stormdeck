@@ -1,0 +1,26 @@
+[package]
+name = "weather-ingest"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1"
+hex = "0.4"
+hmac = "0.13"
+lambda_runtime = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots", "json", "gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+time = { version = "0.3", features = ["formatting", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Dev-time only: TypeScript codegen for the web contract ('just build types').
+specta = { version = "2.0.0-rc.25", features = ["derive"], optional = true }
+specta-serde = { version = "0.0.12", optional = true }
+specta-typescript = { version = "0.0.12", optional = true }
+
+[features]
+ts = ["dep:specta", "dep:specta-serde", "dep:specta-typescript"]

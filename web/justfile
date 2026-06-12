@@ -1,0 +1,10 @@
+# Web app (Vite + React + deck.gl).
+# Runs from this directory or as the root 'web' module.
+
+# Production build
+build:
+    pnpm run build
+
+# Format + lint + organize imports (biome), fixing in place
+fmt:
+    pnpm exec biome check --write src

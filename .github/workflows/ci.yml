@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm exec biome check src
+        working-directory: web
+      - run: pnpm run build
+        working-directory: web
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - run: cargo fmt --manifest-path crates/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path crates/Cargo.toml --all-features -- -D warnings
+      # web/src/generated/weather.ts is generated from contract.rs and
+      # biome-formatted ('just build types'); rerun the pipeline and
+      # fail on drift
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: cargo test --manifest-path crates/Cargo.toml -p weather-ingest --features ts
+      - run: pnpm exec biome format --write src/generated/weather.ts
+        working-directory: web
+      - run: git diff --exit-code web/src/generated
+

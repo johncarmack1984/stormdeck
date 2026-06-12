@@ -1,0 +1,9 @@
+# Complements mise.toml (which installs rust): this is the file rustup
+# itself reads, and the only place to declare the cross target that
+# `cargo lambda build --arm64` needs — rustup auto-adds it from here on
+# fresh machines and in CI. Channel here keeps non-mise shells on the
+# same compiler.
+[toolchain]
+channel = "stable"
+components = ["clippy", "rustfmt"]
+targets = ["aarch64-unknown-linux-gnu"]

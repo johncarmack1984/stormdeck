@@ -1,0 +1,17 @@
+# deps / build artifacts
+node_modules/
+dist/
+target/
+build/
+
+# generated data
+*.pmtiles
+web/public/weather/
+
+# env / local
+.env
+.env.local
+.DS_Store
+CLAUDE.md
+.claude/
+*.tsbuildinfo
