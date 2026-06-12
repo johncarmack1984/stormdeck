@@ -8,6 +8,7 @@ import {
   StackProps,
   aws_cloudfront as cloudfront,
   aws_cloudfront_origins as origins,
+  aws_iam as iam,
   aws_lambda as lambda,
   aws_s3 as s3,
   aws_scheduler as scheduler,
@@ -153,6 +154,19 @@ export class StormdeckStack extends Stack {
           responseHeadersPolicy: weatherHeaders,
         },
       },
+    });
+
+    // withOriginAccessControl grants only lambda:InvokeFunctionUrl, but the
+    // OAC docs require lambda:InvokeFunction for the service principal too —
+    // without it the signed origin requests 403 (AccessDeniedException).
+    martin.addPermission('AllowCloudFrontInvokeFunction', {
+      principal: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+      sourceArn: this.formatArn({
+        service: 'cloudfront',
+        region: '',
+        resource: `distribution/${cdn.distributionId}`,
+      }),
     });
 
     // EventBridge Scheduler triggers (14M invocations/month free tier).
