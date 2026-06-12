@@ -1,6 +1,9 @@
 # stormdeck
 
-Live weather on a deck.gl map, served entirely from free tiers.
+**Live at [stormdeck.live](https://stormdeck.live).**
+
+Live weather on a deck.gl map, served entirely from free tiers
+(plus thirteen dollars a year of vanity domain).
 
 OpenStreetMap basemap tiles come from [martin](https://github.com/maplibre/martin)
 running **inside AWS Lambda**, reading [PMTiles](https://docs.protomaps.com/pmtiles/)
@@ -55,6 +58,7 @@ flowchart LR
 | EventBridge Scheduler | always free | 14M invocations / month |
 | GitHub Pages | free | public repos |
 | S3 | free 12 months, then ~$0.02/GB-mo | a metro extract is ~$0.01/mo after year one |
+| stormdeck.live (Route 53) | not free | $13/yr + $0.50/mo hosted zone |
 | NWS, Open-Meteo, IEM radar, protomaps builds | free / open data | be polite, attribute |
 
 CloudFront caches tiles hard (24h TTL), so martin invocations stay tiny.

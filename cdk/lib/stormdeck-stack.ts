@@ -10,6 +10,7 @@ import {
   aws_cloudfront_origins as origins,
   aws_iam as iam,
   aws_lambda as lambda,
+  aws_route53 as route53,
   aws_s3 as s3,
   aws_scheduler as scheduler,
   aws_scheduler_targets as targets,
@@ -23,6 +24,26 @@ const BBOX = '-98.2,31.8,-95.8,33.6'; // match the tile extract (DFW)
 const CONTACT = 'github.com/johncarmack1984/stormdeck';
 const TILES_KEY = 'pmtiles/region.pmtiles';
 const WORLD_KEY = 'pmtiles/world.pmtiles';
+
+// stormdeck.live — registered in this account via Route 53 Domains
+// (2026-06-12); registration auto-created the hosted zone, referenced
+// here by id so synth stays env-agnostic (no fromLookup). The web app
+// lives on GitHub Pages, so the apex points at Pages' anycast set:
+// https://docs.github.com/pages → "managing a custom domain".
+const DOMAIN = 'stormdeck.live';
+const HOSTED_ZONE_ID = 'Z05419711L0SGJDJ4NEL1';
+const GITHUB_PAGES_A = [
+  '185.199.108.153',
+  '185.199.109.153',
+  '185.199.110.153',
+  '185.199.111.153',
+];
+const GITHUB_PAGES_AAAA = [
+  '2606:50c0:8000::153',
+  '2606:50c0:8001::153',
+  '2606:50c0:8002::153',
+  '2606:50c0:8003::153',
+];
 
 const MARTIN_ZIP = path.join(__dirname, '../../build/martin-lambda.zip');
 const WEATHER_ZIP = path.join(
@@ -169,6 +190,26 @@ export class StormdeckStack extends Stack {
       }),
     });
 
+    // DNS: apex + www → GitHub Pages, which serves the web app and
+    // provisions the Let's Encrypt cert for the custom domain.
+    const zone = route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
+      hostedZoneId: HOSTED_ZONE_ID,
+      zoneName: DOMAIN,
+    });
+    new route53.ARecord(this, 'PagesA', {
+      zone,
+      target: route53.RecordTarget.fromIpAddresses(...GITHUB_PAGES_A),
+    });
+    new route53.AaaaRecord(this, 'PagesAaaa', {
+      zone,
+      target: route53.RecordTarget.fromIpAddresses(...GITHUB_PAGES_AAAA),
+    });
+    new route53.CnameRecord(this, 'PagesWww', {
+      zone,
+      recordName: 'www',
+      domainName: 'johncarmack1984.github.io',
+    });
+
     // EventBridge Scheduler triggers (14M invocations/month free tier).
     // Each lattice point is one Open-Meteo API call; together these rates
     // stay under their 10k/day non-commercial tier (~9k/day).
@@ -187,6 +228,7 @@ export class StormdeckStack extends Stack {
       });
     }
 
+    new CfnOutput(this, 'SiteUrl', { value: `https://${DOMAIN}` });
     new CfnOutput(this, 'ApiBase', {
       value: `https://${cdn.distributionDomainName}`,
       description: 'Set this as the API_BASE repo variable for the Pages build',

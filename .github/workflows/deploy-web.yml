@@ -35,7 +35,7 @@ jobs:
         env:
           # Repo variable: set to the stack's ApiBase output
           VITE_API_BASE: ${{ vars.API_BASE }}
-          BASE_PATH: /${{ github.event.repository.name }}/
+          BASE_PATH: /
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist
