@@ -254,6 +254,10 @@ export class StormdeckStack extends Stack {
     }
 
     new CfnOutput(this, 'SiteUrl', { value: `https://${DOMAIN}` });
+    new CfnOutput(this, 'DistributionId', {
+      value: cdn.distributionId,
+      description: 'Set as the DISTRIBUTION_ID repo variable (deploy-web invalidations)',
+    });
     new CfnOutput(this, 'ApiBase', {
       value: `https://${cdn.distributionDomainName}`,
       description: 'Set this as the API_BASE repo variable for the Pages build',

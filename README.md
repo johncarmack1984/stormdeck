@@ -12,7 +12,9 @@ extracts straight from a private S3 bucket. A scheduled Rust lambda
 alerts plus two Open-Meteo conditions grids — a fine one over the home
 bbox and a 6° lattice covering the planet. Radar is RainViewer's global
 composite (IEM NEXRAD as fallback). The web app is React + deck.gl +
-MapLibre on GitHub Pages.
+MapLibre, served from the same CloudFront distribution as the tiles
+and weather — one origin, no CORS, hashed assets cached immutable at
+the edge. Map views mirror into the URL hash, so any view is a link.
 
 > **Not an official weather source.** This is a hobby map on free-tier
 > infrastructure: alerts refresh on a schedule, radar lags by several
@@ -23,12 +25,12 @@ MapLibre on GitHub Pages.
 
 ```mermaid
 flowchart LR
-    pages["GitHub Pages<br/>deck.gl · MapLibre · protomaps style"]
+    viewer["stormdeck.live<br/>deck.gl · MapLibre · protomaps style"]
 
     subgraph aws["AWS — all free tier"]
         cdn["CloudFront"]
         martin["martin<br/>Lambda function URL"]
-        bucket[("S3 — private<br/>pmtiles/ · weather/")]
+        bucket[("S3 — private<br/>site/ · pmtiles/ · weather/")]
         ingest["weather-ingest<br/>Rust Lambda"]
         sched["EventBridge Scheduler<br/>5 min / 30 min / 6 h"]
     end
@@ -37,10 +39,10 @@ flowchart LR
     meteo["open-meteo.com"]
     radar["RainViewer<br/>IEM NEXRAD fallback"]
 
-    pages -->|"basemap tiles"| cdn
-    pages -->|"weather JSON"| cdn
-    pages -->|"radar tiles"| radar
-    cdn -->|"default behavior"| martin
+    viewer -->|"app · tiles · weather"| cdn
+    viewer -->|"radar tiles"| radar
+    cdn -->|"default → site/"| bucket
+    cdn -->|"catalog · region* · world*"| martin
     cdn -->|"weather/*"| bucket
     martin -->|"range reads"| bucket
     sched -->|"invokes"| ingest
@@ -56,7 +58,6 @@ flowchart LR
 | Lambda (martin + ingest) | always free | 1M requests + 400k GB-s / month |
 | CloudFront | always free | 1 TB egress + 10M requests / month |
 | EventBridge Scheduler | always free | 14M invocations / month |
-| GitHub Pages | free | public repos |
 | S3 | free 12 months, then ~$0.02/GB-mo | a metro extract is ~$0.01/mo after year one |
 | stormdeck.live (Route 53) | not free | $13/yr + $0.50/mo hosted zone |
 | NWS, Open-Meteo, IEM radar, protomaps builds | free / open data | be polite, attribute |
@@ -91,19 +92,19 @@ just profile=<admin> cdk bootstrap
 just profile=<admin> cdk deploy oidc
 gh variable set AWS_DEPLOY_ROLE_ARN \
   --body "$(just profile=<admin> cdk output DeployRoleArn StormdeckGithubOidc)"
-gh api -X POST repos/<you>/stormdeck/pages -f build_type=workflow
 git push    # deploy-infra applies the stack (or locally: just cdk deploy)
 
 # 4. ship the tiles, prime the weather data
 just tiles upload
 just weather prime
 
-# 5. point the web app at CloudFront and republish
-gh variable set API_BASE --body "$(just cdk output ApiBase)"
+# 5. tell deploy-web which distribution to invalidate, then publish
+gh variable set DISTRIBUTION_ID --body "$(just cdk output DistributionId)"
 gh workflow run deploy-web.yml
 ```
 
-After that, `deploy-web` republishes on any push that touches `web/`,
+After that, `deploy-web` republishes on any push that touches `web/`
+(an S3 sync plus an index invalidation — hashed assets are immutable),
 and `deploy-infra` redeploys on anything touching `cdk/` or `crates/`.
 
 ## Local dev
@@ -124,6 +125,14 @@ every infra recipe (`cdk bootstrap`, `cdk deploy`, `cdk outputs`,
 `tiles upload`, `weather prime`, …). Module justfiles live in their
 home folders, so e.g. `just deploy` from inside `cdk/` works too.
 
+One piece lives outside CloudFormation: the stormdeck.live certificate
+was requested once via the ACM CLI in us-east-1 (CloudFront only takes
+certs from there) and is pinned by ARN in the stack. Its DNS
+validation records *are* stack-managed, so renewals stay hands-off.
+Mind the CAA gotcha: ACM follows CAA policy through CNAMEs, so a
+record pointing at a host with restrictive CAA (github.io, say) blocks
+issuance for that name.
+
 ## Configuration
 
 | Knob | Where | Default |
@@ -132,7 +141,7 @@ home folders, so e.g. `just deploy` from inside `cdk/` works too.
 | `nws_area` | same | empty (all US alerts) |
 | Global lattice spacing | `GLOBAL_STEP_DEG` lambda env | 6° |
 | Global/regional grid switch | `GRID_ZOOM_SPLIT` in `web/src/config.ts` | z6.5 |
-| Map start view | `web/src/config.ts` | DFW, z8 |
+| Map start view | `web/src/config.ts` (URL hash wins) | world, z0 |
 | World context detail | `WORLD_MAXZOOM` env for `just tiles extract` | z0–6 |
 | Schedules | `cdk/lib/stormdeck-stack.ts` | alerts 5 min, grid 30 min, global 6 h |
 | Grid density | `GRID_COLS`/`GRID_ROWS` lambda env | 8×6 |
