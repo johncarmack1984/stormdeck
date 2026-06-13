@@ -4,6 +4,12 @@ import { API_BASE } from './config';
 
 const FLAVOR = namedFlavor('light');
 
+// maplibre fetches tiles inside a blob-URL worker, where relative URLs
+// have no base to resolve against ("Request constructor: /world/1/0/1
+// is not a valid URL") — so an empty API_BASE (same-origin production)
+// must be absolutized here even though fetch() elsewhere copes.
+const TILE_BASE = API_BASE || window.location.origin;
+
 function styleLayers(source: string): LayerSpecification[] {
   // Prefix ids so the two copies of the layer set don't collide.
   return layers(source, FLAVOR, { lang: 'en' }).map((l) => ({
@@ -28,14 +34,14 @@ export function basemapStyle(): StyleSpecification {
     sources: {
       world: {
         type: 'vector',
-        tiles: [`${API_BASE}/world/{z}/{x}/{y}`],
+        tiles: [`${TILE_BASE}/world/{z}/{x}/{y}`],
         maxzoom: 6,
         attribution:
           '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://protomaps.com">Protomaps</a>',
       },
       region: {
         type: 'vector',
-        tiles: [`${API_BASE}/region/{z}/{x}/{y}`],
+        tiles: [`${TILE_BASE}/region/{z}/{x}/{y}`],
         maxzoom: 15,
       },
     },
