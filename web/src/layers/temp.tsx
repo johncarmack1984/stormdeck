@@ -1,16 +1,13 @@
 import type { Color } from '@deck.gl/core';
 import { TextLayer } from '@deck.gl/layers';
-import type {
-  GridProps,
-  PointGeom,
-  WeatherFc,
-  WeatherFeature,
-} from '../generated/weather';
+import type { Feature, Point } from '../generated/geojson';
+import type { GridProps } from '../generated/weather';
+import type { WeatherFc } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
-type GridFc = WeatherFc<PointGeom, GridProps>;
-type GridFeature = WeatherFeature<PointGeom, GridProps>;
+type GridFc = WeatherFc<Point, GridProps>;
+type GridFeature = Feature<Point, GridProps>;
 
 function tempColor(f: number): Color {
   if (f <= 32) return [37, 99, 235, 255];
@@ -42,7 +39,8 @@ export const temp: WeatherLayer<GridFc> = {
         id: 'temps',
         data: cells,
         pickable: true,
-        getPosition: (f) => f.geometry.coordinates,
+        // GeoJSON coordinates are number[]; deck.gl wants a fixed position tuple.
+        getPosition: (f) => f.geometry.coordinates as [number, number],
         getText: (f) => `${Math.round(f.properties.tempF as number)}°`,
         getColor: (f) => tempColor(f.properties.tempF as number),
         getSize: 16,

@@ -1,4 +1,3 @@
-import type { Geometry } from 'geojson';
 import { useEffect, useState } from 'react';
 import type { RadarSource } from './config';
 import {
@@ -8,17 +7,20 @@ import {
   RAINVIEWER_MAX_NATIVE_ZOOM,
   WEATHER_BASE,
 } from './config';
-import type {
-  AlertProps,
-  GridProps,
-  PointGeom,
-  WeatherFc,
-} from './generated/weather';
+import type { FeatureCollection, Geometry, Point } from './generated/geojson';
+import type { AlertProps, GridProps } from './generated/weather';
 
 // The payload shapes come from the Rust producer — weather-ingest's
 // contract.rs is the single source of truth, and `just build types`
 // regenerates ./generated/weather.ts from it (CI fails if the two
 // drift).
+
+/** A GeoJSON FeatureCollection plus the epoch-ms timestamp the ingester stamps
+ * on as a foreign member. `FeatureCollection` is typed-geojson's, so these
+ * payloads stay mutually assignable with `@types/geojson`. */
+export type WeatherFc<G, P> = FeatureCollection<G, P> & {
+  generated_ms: number;
+};
 
 function useFeed<T>(path: string, intervalMs: number): T | null {
   const [data, setData] = useState<T | null>(null);
@@ -47,9 +49,9 @@ function useFeed<T>(path: string, intervalMs: number): T | null {
 export const useAlerts = () =>
   useFeed<WeatherFc<Geometry, AlertProps>>('alerts.json', 60_000);
 export const useGrid = () =>
-  useFeed<WeatherFc<PointGeom, GridProps>>('grid.json', 300_000);
+  useFeed<WeatherFc<Point, GridProps>>('grid.json', 300_000);
 export const useGlobalGrid = () =>
-  useFeed<WeatherFc<PointGeom, GridProps>>('global.json', 600_000);
+  useFeed<WeatherFc<Point, GridProps>>('global.json', 600_000);
 
 /**
  * Latest worldwide radar frame from RainViewer. Falls back to the IEM
@@ -93,11 +95,11 @@ export interface WeatherData {
   alerts: WeatherFc<Geometry, AlertProps> | null;
   radar: RadarSource;
   /** Fine bbox grid (regional). */
-  grid: WeatherFc<PointGeom, GridProps> | null;
+  grid: WeatherFc<Point, GridProps> | null;
   /** Coarse planet lattice. */
-  globalGrid: WeatherFc<PointGeom, GridProps> | null;
+  globalGrid: WeatherFc<Point, GridProps> | null;
   /** Whichever grid is live at the current zoom. */
-  activeGrid: WeatherFc<PointGeom, GridProps> | null;
+  activeGrid: WeatherFc<Point, GridProps> | null;
   /** True near the ground (fine grid); false far out (global lattice). */
   region: boolean;
 }

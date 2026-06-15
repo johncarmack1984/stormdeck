@@ -1,7 +1,8 @@
 import type { Color } from '@deck.gl/core';
 import { GeoJsonLayer } from '@deck.gl/layers';
-import type { Geometry } from 'geojson';
-import type { AlertProps, WeatherFc } from '../generated/weather';
+import type { Geometry } from '../generated/geojson';
+import type { AlertProps } from '../generated/weather';
+import type { WeatherFc } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 

@@ -1,10 +1,12 @@
 import type { Color } from '@deck.gl/core';
 import { LineLayer, ScatterplotLayer } from '@deck.gl/layers';
-import type { GridProps, PointGeom, WeatherFc } from '../generated/weather';
+import type { Point } from '../generated/geojson';
+import type { GridProps } from '../generated/weather';
+import type { WeatherFc } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
-type GridFc = WeatherFc<PointGeom, GridProps>;
+type GridFc = WeatherFc<Point, GridProps>;
 
 interface WindSeg {
   from: [number, number];

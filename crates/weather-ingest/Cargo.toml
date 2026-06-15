@@ -13,6 +13,9 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "w
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
+# Strongly-typed GeoJSON envelopes (Feature/FeatureCollection/Geometry/Point).
+# Its specta export drives web/src/generated/geojson.ts under the `ts` feature.
+typed-geojson = "0.1.1"
 time = { version = "0.3", features = ["formatting", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 tracing = "0.1"
@@ -23,4 +26,4 @@ specta-serde = { version = "0.0.12", optional = true }
 specta-typescript = { version = "0.0.12", optional = true }
 
 [features]
-ts = ["dep:specta", "dep:specta-serde", "dep:specta-typescript"]
+ts = ["dep:specta", "dep:specta-serde", "dep:specta-typescript", "typed-geojson/specta"]

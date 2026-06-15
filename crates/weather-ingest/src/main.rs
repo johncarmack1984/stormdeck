@@ -17,7 +17,8 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, ensure, Context, Result};
-use contract::{AlertProps, GridProps, PointGeom, Severity, WeatherFc, WeatherFeature};
+use contract::{AlertProps, GridProps, Severity, Snapshot};
+use typed_geojson::{Feature, Point};
 use lambda_runtime::LambdaEvent;
 use serde_json::{json, Value};
 use tracing::{info, warn};
@@ -106,7 +107,7 @@ async fn fetch_alerts(http: &reqwest::Client, cfg: &Config) -> Result<Value> {
     };
     let total = features.len();
     // Zone-based alerts ship without geometry; the map can't draw those.
-    let drawable: Vec<WeatherFeature<Value, AlertProps>> = features
+    let drawable: Vec<Feature<Value, AlertProps>> = features
         .into_iter()
         .filter(|f| !f["geometry"].is_null())
         .map(|mut f| {
@@ -120,10 +121,7 @@ async fn fetch_alerts(http: &reqwest::Client, cfg: &Config) -> Result<Value> {
                 onset: p["onset"].as_str().map(str::to_owned),
                 expires: p["expires"].as_str().map(str::to_owned),
             };
-            WeatherFeature::Feature {
-                geometry: f["geometry"].take(),
-                properties: props,
-            }
+            Feature::new(f["geometry"].take(), props)
         })
         .collect();
     let scope = if cfg.nws_area.is_empty() {
@@ -142,10 +140,7 @@ async fn fetch_alerts(http: &reqwest::Client, cfg: &Config) -> Result<Value> {
             total - drawable.len()
         );
     }
-    Ok(serde_json::to_value(WeatherFc::FeatureCollection {
-        generated_ms: now_ms(),
-        features: drawable,
-    })?)
+    Ok(serde_json::to_value(Snapshot::new(now_ms(), drawable))?)
 }
 
 const OPEN_METEO_CURRENT: &str =
@@ -174,7 +169,7 @@ fn open_meteo_cells(body: Value) -> Result<Vec<Value>> {
 fn cell_feature(
     cell: &Value,
     lattice: Option<(usize, usize)>,
-) -> Result<WeatherFeature<PointGeom, GridProps>> {
+) -> Result<Feature<Point, GridProps>> {
     let cur = &cell["current"];
     let lon = cell["longitude"]
         .as_f64()
@@ -182,11 +177,9 @@ fn cell_feature(
     let lat = cell["latitude"]
         .as_f64()
         .context("Open-Meteo cell missing latitude")?;
-    Ok(WeatherFeature::Feature {
-        geometry: PointGeom::Point {
-            coordinates: [lon, lat],
-        },
-        properties: GridProps {
+    Ok(Feature::new(
+        Point::new(vec![lon, lat]),
+        GridProps {
             temp_f: cur["temperature_2m"].as_f64(),
             rh: cur["relative_humidity_2m"].as_f64(),
             wind_mph: cur["wind_speed_10m"].as_f64(),
@@ -195,7 +188,7 @@ fn cell_feature(
             i: lattice.map(|(i, _)| i as u32),
             j: lattice.map(|(_, j)| j as u32),
         },
-    })
+    ))
 }
 
 /// Current conditions on a grid_cols x grid_rows lattice over the bbox,
@@ -240,10 +233,7 @@ async fn fetch_grid(http: &reqwest::Client, cfg: &Config) -> Result<Value> {
         features.len(),
         started.elapsed()
     );
-    Ok(serde_json::to_value(WeatherFc::FeatureCollection {
-        generated_ms: now_ms(),
-        features,
-    })?)
+    Ok(serde_json::to_value(Snapshot::new(now_ms(), features))?)
 }
 
 /// Current conditions on a whole-planet lattice (global_step degrees apart,
@@ -318,10 +308,7 @@ async fn fetch_global_grid(http: &reqwest::Client, cfg: &Config) -> Result<Value
         features.len(),
         started.elapsed()
     );
-    Ok(serde_json::to_value(WeatherFc::FeatureCollection {
-        generated_ms: now_ms(),
-        features,
-    })?)
+    Ok(serde_json::to_value(Snapshot::new(now_ms(), features))?)
 }
 
 #[derive(Clone)]

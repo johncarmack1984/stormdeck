@@ -37,9 +37,9 @@ jobs:
           workspaces: crates
       - run: cargo fmt --manifest-path crates/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path crates/Cargo.toml --all-features -- -D warnings
-      # web/src/generated/weather.ts is generated from contract.rs and
-      # biome-formatted ('just build types'); rerun the pipeline and
-      # fail on drift
+      # web/src/generated/{weather,geojson}.ts are generated (from
+      # contract.rs and the typed-geojson crate) and biome-formatted
+      # ('just build types'); rerun the pipeline and fail on drift
       - uses: pnpm/action-setup@v6
         with:
           version: 10
@@ -51,7 +51,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: web
       - run: cargo test --manifest-path crates/Cargo.toml -p weather-ingest --features ts
-      - run: pnpm exec biome format --write src/generated/weather.ts
+      - run: pnpm exec biome format --write src/generated/
         working-directory: web
       - run: git diff --exit-code web/src/generated
 

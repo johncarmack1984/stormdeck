@@ -28,24 +28,5 @@ export type GridProps = {
   j: number | null;
 };
 
-/**  GeoJSON Point; coordinates are `[lon, lat]`. */
-export type PointGeom = { type: 'Point'; coordinates: [number, number] };
-
 /**  NWS severity, normalized: anything unrecognized becomes `Unknown`. */
 export type Severity = 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
-
-export type WeatherFc<G, P> = {
-  type: 'FeatureCollection';
-  /**
-   *  Epoch ms stamped when this snapshot was generated.
-   *  (Safe in an f64/TS number until the year 287396.)
-   */
-  generated_ms: number;
-  features: WeatherFeature<G, P>[];
-};
-
-export type WeatherFeature<G, P> = {
-  type: 'Feature';
-  geometry: G;
-  properties: P;
-};
