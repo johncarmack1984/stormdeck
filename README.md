@@ -2,8 +2,9 @@
 
 **Live at [stormdeck.live](https://stormdeck.live).**
 
-Live weather on a deck.gl map, served entirely from free tiers
-(plus thirteen dollars a year of vanity domain).
+Live weather on a deck.gl map, served almost entirely from free tiers —
+the whole bill is thirteen dollars a year of vanity domain plus a few
+cents a month for Route 53 and SES email.
 
 OpenStreetMap basemap tiles come from [martin](https://github.com/maplibre/martin)
 running **inside AWS Lambda**, reading [PMTiles](https://docs.protomaps.com/pmtiles/)
@@ -16,7 +17,7 @@ MapLibre, served from the same CloudFront distribution as the tiles
 and weather — one origin, no CORS, hashed assets cached immutable at
 the edge. Map views mirror into the URL hash, so any view is a link.
 
-> **Not an official weather source.** This is a hobby map on free-tier
+> **Not an official weather source.** This is a hobby map on shoestring
 > infrastructure: alerts refresh on a schedule, radar lags by several
 > minutes, zone-based NWS alerts (no polygon geometry) are not shown,
 > and any piece can fail silently with no on-map indication. For
@@ -27,7 +28,7 @@ the edge. Map views mirror into the URL hash, so any view is a link.
 flowchart LR
     viewer["stormdeck.live<br/>deck.gl · MapLibre · protomaps style"]
 
-    subgraph aws["AWS — all free tier"]
+    subgraph aws["AWS — near-free tier"]
         cdn["CloudFront"]
         martin["martin<br/>Lambda function URL"]
         bucket[("S3 — private<br/>site/ · pmtiles/ · weather/")]

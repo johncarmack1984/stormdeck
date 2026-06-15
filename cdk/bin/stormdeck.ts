@@ -1,4 +1,5 @@
 import { App, Tags } from 'aws-cdk-lib';
+import { StormdeckEmailStack } from '../lib/email-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
 import { StormdeckStack } from '../lib/stormdeck-stack';
 
@@ -11,6 +12,9 @@ const app = new App();
 new StormdeckStack(app, 'StormdeckStack');
 // Deployed once, locally, with admin creds; CI only touches StormdeckStack.
 new GithubOidcStack(app, 'StormdeckGithubOidc');
+// Email (SES) — deploy with AWS_REGION=us-east-2 (SES inbound region). Not in
+// CI yet: it has manual prereqs (SSM forward-to secret, SES identity verify).
+new StormdeckEmailStack(app, 'StormdeckEmailStack');
 
 // One tag to find (or exclude) everything stormdeck owns when sorting
 // out the rest of the account.
