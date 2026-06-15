@@ -2,6 +2,7 @@ import type { Geometry } from 'geojson';
 import { useEffect, useState } from 'react';
 import type { RadarSource } from './config';
 import {
+  GRID_ZOOM_SPLIT,
   RADAR_FALLBACK,
   RAINVIEWER_API,
   RAINVIEWER_MAX_NATIVE_ZOOM,
@@ -84,4 +85,36 @@ export function useRadarTiles(): RadarSource {
     };
   }, []);
   return source;
+}
+
+/** Everything the map's layers draw from, in one place. The region/global
+ * grid split lives here so a layer just reads `activeGrid`. */
+export interface WeatherData {
+  alerts: WeatherFc<Geometry, AlertProps> | null;
+  radar: RadarSource;
+  /** Fine bbox grid (regional). */
+  grid: WeatherFc<PointGeom, GridProps> | null;
+  /** Coarse planet lattice. */
+  globalGrid: WeatherFc<PointGeom, GridProps> | null;
+  /** Whichever grid is live at the current zoom. */
+  activeGrid: WeatherFc<PointGeom, GridProps> | null;
+  /** True near the ground (fine grid); false far out (global lattice). */
+  region: boolean;
+}
+
+/** One hook, all feeds — keeps the layer registry itself hook-free. */
+export function useWeatherData(zoom: number): WeatherData {
+  const alerts = useAlerts();
+  const grid = useGrid();
+  const globalGrid = useGlobalGrid();
+  const radar = useRadarTiles();
+  const region = zoom >= GRID_ZOOM_SPLIT;
+  return {
+    alerts,
+    radar,
+    grid,
+    globalGrid,
+    activeGrid: region ? grid : globalGrid,
+    region,
+  };
 }
