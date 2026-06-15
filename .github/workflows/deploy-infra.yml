@@ -32,11 +32,11 @@ jobs:
       - name: Install cargo-lambda
         run: pip install cargo-lambda
 
-      - name: Build lambda zips
-        run: |
-          cargo lambda build --manifest-path crates/Cargo.toml --release --arm64 \
-            --output-format zip -p weather-ingest
-          scripts/build-martin-lambda.sh build/martin-lambda.zip
+      # weather-ingest is compiled by cargo-lambda-cdk during cdk deploy
+      # (synth), using the cargo-lambda + toolchain set up above; only the
+      # prebuilt martin binary needs packaging ahead of time.
+      - name: Build martin lambda zip
+        run: scripts/build-martin-lambda.sh build/martin-lambda.zip
 
       - uses: pnpm/action-setup@v6
         with:

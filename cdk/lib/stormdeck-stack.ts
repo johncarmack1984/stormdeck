@@ -17,6 +17,7 @@ import {
   aws_scheduler as scheduler,
   aws_scheduler_targets as targets,
 } from 'aws-cdk-lib';
+import { RustFunction } from 'cargo-lambda-cdk';
 import { Construct } from 'constructs';
 
 // Knobs.
@@ -38,10 +39,9 @@ const CERT_ARN_US_EAST_1 =
   'arn:aws:acm:us-east-1:735853783919:certificate/bcda4335-406a-4aaf-be34-ab9aba18622d';
 
 const MARTIN_ZIP = path.join(__dirname, '../../build/martin-lambda.zip');
-const WEATHER_ZIP = path.join(
-  __dirname,
-  '../../crates/target/lambda/weather-ingest/bootstrap.zip',
-);
+// weather-ingest compiles at synth via cargo-lambda-cdk (RustFunction),
+// so there's no prebuilt zip to stage — just the workspace manifest.
+const CRATES_MANIFEST = path.join(__dirname, '../../crates/Cargo.toml');
 
 export class StormdeckStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -80,12 +80,16 @@ export class StormdeckStack extends Stack {
       authType: lambda.FunctionUrlAuthType.AWS_IAM,
     });
 
-    const ingest = new lambda.Function(this, 'WeatherIngest', {
+    // cargo-lambda-cdk compiles weather-ingest at synth (cargo lambda —
+    // locally when it's on PATH, else Docker). binaryName is required
+    // because the manifest is a workspace; ARM_64 here drives both the
+    // --arm64 build flag and the function architecture. Runtime defaults
+    // to provided.al2023 and the handler to bootstrap.
+    const ingest = new RustFunction(this, 'WeatherIngest', {
       functionName: `${PROJECT}-weather-ingest`,
-      runtime: lambda.Runtime.PROVIDED_AL2023,
+      manifestPath: CRATES_MANIFEST,
+      binaryName: 'weather-ingest',
       architecture: lambda.Architecture.ARM_64,
-      handler: 'bootstrap',
-      code: lambda.Code.fromAsset(WEATHER_ZIP),
       memorySize: 256,
       // The global job paces ~12 Open-Meteo batches 15s apart (+ 429 backoff).
       timeout: Duration.seconds(600),

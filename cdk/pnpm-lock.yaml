@@ -11,6 +11,9 @@ importers:
       aws-cdk-lib:
         specifier: ^2.259.0
         version: 2.259.0(constructs@10.6.0)
+      cargo-lambda-cdk:
+        specifier: ^0.0.36
+        version: 0.0.36(aws-cdk-lib@2.259.0(constructs@10.6.0))(constructs@10.6.0)
       constructs:
         specifier: ^10.6.0
         version: 10.6.0
@@ -226,6 +229,14 @@ packages:
     engines: {node: '>= 18.0.0'}
     hasBin: true
 
+  cargo-lambda-cdk@0.0.36:
+    resolution: {integrity: sha512-H25m7WjzHeifdfEEpsSNkQS6WZETMT6agHaUIfA0rmYlQohOX3lC1qE0OXBEsk1bgCHEatfcsEBkyYgxnzZdLA==}
+    peerDependencies:
+      aws-cdk-lib: ^2.231.0
+      constructs: ^10.0.5
+    bundledDependencies:
+      - js-toml
+
   constructs@10.6.0:
     resolution: {integrity: sha512-TxHOnBO5zMo/G76ykzGF/wMpEHu257TbWiIxP9K0Yv/+t70UzgBQiTqjkAsWOPC6jW91DzJI0+ehQV6xDRNBuQ==}
 
@@ -350,6 +361,11 @@ snapshots:
       constructs: 10.6.0
 
   aws-cdk@2.1126.0: {}
+
+  cargo-lambda-cdk@0.0.36(aws-cdk-lib@2.259.0(constructs@10.6.0))(constructs@10.6.0):
+    dependencies:
+      aws-cdk-lib: 2.259.0(constructs@10.6.0)
+      constructs: 10.6.0
 
   constructs@10.6.0: {}
 

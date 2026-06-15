@@ -1,17 +1,11 @@
-# Lambda zip packaging. Both zips must exist before 'just cdk synth'
-# or 'just cdk deploy'.
+# Lambda packaging + type generation. The martin zip must exist before
+# 'just cdk synth' / 'just cdk deploy'; weather-ingest is no longer
+# packaged here — cargo-lambda-cdk compiles it at synth.
 
 set working-directory := '..'
 
-# Build both Lambda zips
-lambdas: weather martin
-
-# Cross-compile weather-ingest for Lambda (arm64 zip)
-weather:
-    cargo lambda build --manifest-path crates/Cargo.toml --release --arm64 \
-        --output-format zip -p weather-ingest
-
-# Package the prebuilt martin release binary as a Lambda zip
+# Package the prebuilt martin release binary as a Lambda zip — the one
+# artifact synth needs staged (weather-ingest builds itself at synth).
 martin:
     scripts/build-martin-lambda.sh build/martin-lambda.zip
 

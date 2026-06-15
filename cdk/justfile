@@ -3,7 +3,9 @@
 
 import '../.just/common.just'
 
-# Synthesize offline (run 'just build lambdas' first)
+# Synthesize (run 'just build martin' first; weather-ingest compiles
+# here via cargo-lambda-cdk, so synth needs cargo-lambda + the Rust
+# toolchain and is no longer fully offline)
 synth:
     pnpm exec cdk synth --quiet
 

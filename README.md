@@ -82,9 +82,9 @@ also need the `aws` CLI, authenticated.
 #    bbox=... to change) plus a small z0-6 world for zoomed-out context
 just tiles extract
 
-# 2. build both lambda zips: weather-ingest via cargo-lambda,
-#    martin from the upstream prebuilt arm64 binary
-just build lambdas
+# 2. package the martin lambda zip from the upstream prebuilt arm64
+#    binary (weather-ingest compiles itself at deploy time, via CDK)
+just build martin
 
 # 3. one-time account setup; afterwards every push to main that touches
 #    cdk/ or crates/ deploys via GitHub OIDC (no stored AWS keys)

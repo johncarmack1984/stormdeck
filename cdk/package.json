@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "aws-cdk-lib": "^2.259.0",
+    "cargo-lambda-cdk": "^0.0.36",
     "constructs": "^10.6.0"
   },
   "devDependencies": {
