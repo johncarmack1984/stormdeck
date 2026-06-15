@@ -32,11 +32,11 @@ const WORLD_KEY = 'pmtiles/world.pmtiles';
 // (2026-06-12); registration auto-created the hosted zone, referenced
 // here by id so synth stays env-agnostic (no fromLookup).
 const DOMAIN = 'stormdeck.live';
-const HOSTED_ZONE_ID = 'Z05419711L0SGJDJ4NEL1';
+const HOSTED_ZONE_ID = 'Z05951751X7ICJA13P5AR';
 // Issued by the StormdeckCert stack (us-east-1 — CloudFront cert rule);
 // pinned by ARN so this stack stays env-agnostic and synths offline.
 const CERT_ARN_US_EAST_1 =
-  'arn:aws:acm:us-east-1:735853783919:certificate/bcda4335-406a-4aaf-be34-ab9aba18622d';
+  'arn:aws:acm:us-east-1:236608207327:certificate/e3a334a5-ee53-4d52-bcb4-80a327baa81d';
 
 const MARTIN_ZIP = path.join(__dirname, '../../build/martin-lambda.zip');
 // weather-ingest compiles at synth via cargo-lambda-cdk (RustFunction),
@@ -67,9 +67,12 @@ export class StormdeckStack extends Stack {
       code: lambda.Code.fromAsset(MARTIN_ZIP),
       memorySize: 512,
       timeout: Duration.seconds(30),
-      // Tile serving keeps working even if something else in the account
-      // exhausts the shared unreserved concurrency pool.
-      reservedConcurrentExecutions: 25,
+      // No reservedConcurrentExecutions: this account is single-tenant (the
+      // whole point of the dedicated account), so there's no shared pool to
+      // protect against — martin gets the account's full concurrency. New
+      // accounts also start at a 10-execution limit, below which any
+      // reservation is rejected; raise the Lambda quota if tile traffic
+      // ever needs more headroom.
       environment: {
         TILE_SOURCES: `s3://${bucket.bucketName}/${TILES_KEY} s3://${bucket.bucketName}/${WORLD_KEY}`,
         RUST_LOG: 'info',
@@ -161,12 +164,20 @@ export class StormdeckStack extends Stack {
       originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
       responseHeadersPolicy: tilesHeaders,
     };
+    // CloudFront aliases are globally unique across distributions, so a new
+    // distribution can't claim stormdeck.live/www while the old one still owns
+    // them. STORMDECK_SKIP_CUSTOM_DOMAIN=1 stands this stack up on its
+    // *.cloudfront.net domain (no aliases/cert) for the migration buildout;
+    // the aliases + cert are attached at cutover. Default = production behavior.
+    const customDomain = process.env.STORMDECK_SKIP_CUSTOM_DOMAIN !== '1';
     const cdn = new cloudfront.Distribution(this, 'Cdn', {
       comment: PROJECT,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
-      domainNames: [DOMAIN, `www.${DOMAIN}`],
-      certificate: acm.Certificate.fromCertificateArn(this, 'SiteCert', CERT_ARN_US_EAST_1),
+      domainNames: customDomain ? [DOMAIN, `www.${DOMAIN}`] : undefined,
+      certificate: customDomain
+        ? acm.Certificate.fromCertificateArn(this, 'SiteCert', CERT_ARN_US_EAST_1)
+        : undefined,
       defaultRootObject: 'index.html',
       defaultBehavior: {
         // deploy-web syncs the built app here: hashed assets immutable,
@@ -228,15 +239,15 @@ export class StormdeckStack extends Stack {
     // not validate while it still pointed at github.io.)
     new route53.CnameRecord(this, 'CertValidationApex', {
       zone,
-      recordName: '_09bacf8136e88e3c69f28bf8b48332bc',
+      recordName: '_2f33ac9e042afc2d5992bbdbff0a5a03',
       domainName:
-        '_a169af4dedae84057cfee7dac1dc6da0.jkddzztszm.acm-validations.aws.',
+        '_dc990f9e70606bb0f52278a70925308d.jkddzztszm.acm-validations.aws.',
     });
     new route53.CnameRecord(this, 'CertValidationWww', {
       zone,
-      recordName: '_ec5637aaa3b96d5ba26b7e1c07be2ad5.www',
+      recordName: '_52516c0539ceaca7c1893d81314f9582.www',
       domainName:
-        '_24aac96f6e7f3ed29da372d7c827eca0.jkddzztszm.acm-validations.aws.',
+        '_9fa95b9ad4ef666e498d1b9de17ba1f8.jkddzztszm.acm-validations.aws.',
     });
 
     // EventBridge Scheduler triggers (14M invocations/month free tier).
