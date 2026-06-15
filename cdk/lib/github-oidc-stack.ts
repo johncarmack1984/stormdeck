@@ -20,15 +20,25 @@ export class GithubOidcStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    // AWS allows one provider per issuer URL per account, and my-infra's
-    // CI setup created the GitHub one on 2026-06-12 — so import it rather
-    // than create a duplicate. my-infra owns its lifecycle: tearing that
-    // repo's IaC down deletes the provider and breaks this role's trust.
-    const provider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
-      this,
-      'GithubProvider',
-      `arn:aws:iam::${this.account}:oidc-provider/token.actions.githubusercontent.com`,
-    );
+    // AWS allows one provider per issuer URL per account. In the shared
+    // management account my-infra's CI setup created the GitHub provider
+    // (2026-06-12), so import it — my-infra owns its lifecycle (tearing that
+    // repo's IaC down deletes the provider and breaks this role's trust).
+    // A single-tenant sandbox account has no such owner, so stormdeck creates
+    // its own: CREATE_OIDC_PROVIDER=1 keeps the provider in IaC (destroyed with
+    // the account) and drops the cross-repo coupling. Default stays import so
+    // the management account is untouched. See .claude/sandbox-migration/.
+    const provider =
+      process.env.CREATE_OIDC_PROVIDER === '1'
+        ? new iam.OpenIdConnectProvider(this, 'GithubProvider', {
+            url: 'https://token.actions.githubusercontent.com',
+            clientIds: ['sts.amazonaws.com'],
+          })
+        : iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+            this,
+            'GithubProvider',
+            `arn:aws:iam::${this.account}:oidc-provider/token.actions.githubusercontent.com`,
+          );
 
     const role = new iam.Role(this, 'DeployRole', {
       roleName: 'stormdeck-github-deploy',
