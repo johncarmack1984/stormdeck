@@ -9,11 +9,11 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: lts/*
           cache: pnpm
@@ -28,7 +28,7 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -40,10 +40,10 @@ jobs:
       # web/src/generated/weather.ts is generated from contract.rs and
       # biome-formatted ('just build types'); rerun the pipeline and
       # fail on drift
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: lts/*
           cache: pnpm

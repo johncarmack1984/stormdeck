@@ -18,11 +18,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: lts/*
           cache: pnpm
@@ -35,7 +35,7 @@ jobs:
           # Same origin as the tiles and weather feeds: all fetches relative.
           VITE_API_BASE: ''
           BASE_PATH: /
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
