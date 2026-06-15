@@ -18,10 +18,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, ensure, Context, Result};
 use contract::{AlertProps, GridProps, Severity, Snapshot};
-use typed_geojson::{Feature, Point};
 use lambda_runtime::LambdaEvent;
 use serde_json::{json, Value};
 use tracing::{info, warn};
+use typed_geojson::{Feature, Point};
 
 #[derive(Clone)]
 struct Config {

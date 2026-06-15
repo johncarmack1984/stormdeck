@@ -122,9 +122,14 @@ mod export {
         // GeoJSON structure (Feature/FeatureCollection/Geometry/Point/…) from
         // typed-geojson → geojson.ts. Mutually assignable with @types/geojson.
         Typescript::default()
-            .header("// Generated from the typed-geojson crate by `just build types`. Do not edit.\n")
+            .header(
+                "// Generated from the typed-geojson crate by `just build types`. Do not edit.\n",
+            )
             .export_to(
-                concat!(env!("CARGO_MANIFEST_DIR"), "/../../web/src/generated/geojson.ts"),
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../web/src/generated/geojson.ts"
+                ),
                 &typed_geojson::specta_types(),
                 specta_serde::Format,
             )
