@@ -55,3 +55,36 @@ jobs:
         working-directory: web
       - run: git diff --exit-code web/src/generated
 
+  cdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # synth compiles weather-ingest via cargo-lambda-cdk and stages the
+      # prebuilt martin zip, so this needs the Rust toolchain, cargo-lambda,
+      # and the martin binary — but no AWS creds: the stack is env-agnostic
+      # (no fromLookup; ARNs and the hosted-zone id are pinned).
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+      - name: Build martin lambda zip
+        run: scripts/build-martin-lambda.sh build/martin-lambda.zip
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: cdk/pnpm-lock.yaml
+      # tsx synth transpiles without type-checking, so tsc --noEmit guards
+      # the types; synth then exercises the constructs + RustFunction build.
+      - name: typecheck + synth
+        working-directory: cdk
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run typecheck
+          pnpm exec cdk synth --quiet
+
