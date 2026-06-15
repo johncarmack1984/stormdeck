@@ -8,9 +8,10 @@ build/
 *.pmtiles
 web/public/weather/
 
-# env / local
+# env / local — dev defaults live in web/src/config.ts; env files are
+# personal, machine-local overrides only and are never committed
 .env
-.env.local
+.env.*
 .DS_Store
 CLAUDE.md
 .claude/
