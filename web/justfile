@@ -1,6 +1,10 @@
 # Web app (Vite + React + deck.gl).
 # Runs from this directory or as the root 'web' module.
 
+# Vite dev server against the live site's data — no local backend to stand up.
+dev:
+    pnpm run dev
+
 # Production build
 build:
     pnpm run build

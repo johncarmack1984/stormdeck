@@ -110,12 +110,12 @@ and `deploy-infra` redeploys on anything touching `cdk/` or `crates/`.
 
 ## Local dev
 
-The quick way — `pnpm dev` runs the app against the **live site's** tiles +
+The quick way — `just web dev` runs the app against the **live site's** tiles +
 weather, so there's no local backend to stand up:
 
 ```sh
 pnpm --dir web install   # once
-pnpm --dir web dev        # http://localhost:5173, data from stormdeck.live
+just web dev             # http://localhost:5173, data from stormdeck.live
 ```
 
 For offline / tile / basemap work, run the full local stack instead — martin
