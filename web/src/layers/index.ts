@@ -1,4 +1,5 @@
 import { alerts } from './alerts';
+import { citytile } from './citytile';
 import { radar } from './radar';
 import { temp } from './temp';
 import type { WeatherLayer } from './types';
@@ -11,4 +12,10 @@ export type { LayerCtx, WeatherLayer } from './types';
  * top). Adding a layer is a one-line change here plus its module — `App` never
  * has to learn the layer exists.
  */
-export const LAYERS: WeatherLayer<any>[] = [radar, alerts, wind, temp];
+export const LAYERS: WeatherLayer<any>[] = [
+  radar,
+  alerts,
+  wind,
+  temp,
+  citytile,
+];

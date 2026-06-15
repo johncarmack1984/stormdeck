@@ -12,6 +12,9 @@ export interface LayerCtx {
   zoom: number;
   /** True near the ground (fine grid); false far out (global lattice). */
   region: boolean;
+  /** Map-wide forecast time as an hour offset from the citytile snapshot.
+   * Time-aware layers filter their data to it (via DataFilterExtension). */
+  time: number;
   ui: Record<string, number>;
   setUi: (patch: Record<string, number>) => void;
 }

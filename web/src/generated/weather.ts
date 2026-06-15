@@ -12,6 +12,27 @@ export type AlertProps = {
   expires: string | null;
 };
 
+/**
+ *  One city's point forecast: its name and a temperature series (°F) aligned
+ *  element-for-element with the enclosing tile's `hours` axis.
+ */
+export type CityForecast = {
+  name: string;
+  t: number[];
+};
+
+/**
+ *  The `citytile/latest.json` pointer: which snapshot is current, its time
+ *  axis, and the zoom range that has tiles. The web reads this first, then
+ *  builds tile URLs against `snapshotMs` (so old snapshots cache immutably).
+ */
+export type CityTileIndex = {
+  snapshotMs: number;
+  hours: number[];
+  minZoom: number;
+  maxZoom: number;
+};
+
 /**  Open-Meteo current conditions at one grid point. */
 export type GridProps = {
   tempF: number | null;

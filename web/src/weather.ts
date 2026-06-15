@@ -8,7 +8,7 @@ import {
   WEATHER_BASE,
 } from './config';
 import type { FeatureCollection, Geometry, Point } from './generated/geojson';
-import type { AlertProps, GridProps } from './generated/weather';
+import type { AlertProps, CityTileIndex, GridProps } from './generated/weather';
 
 // The payload shapes come from the Rust producer — weather-ingest's
 // contract.rs is the single source of truth, and `just build types`
@@ -52,6 +52,11 @@ export const useGrid = () =>
   useFeed<WeatherFc<Point, GridProps>>('grid.json', 300_000);
 export const useGlobalGrid = () =>
   useFeed<WeatherFc<Point, GridProps>>('global.json', 600_000);
+
+/** The point-forecast tile index (snapshot + hours). The citytile layer's
+ * TileLayer fetches the actual per-tile JSON on demand. */
+export const useCityTiles = () =>
+  useFeed<CityTileIndex>('citytile/latest.json', 600_000);
 
 /**
  * Latest worldwide radar frame from RainViewer. Falls back to the IEM
@@ -100,6 +105,8 @@ export interface WeatherData {
   globalGrid: WeatherFc<Point, GridProps> | null;
   /** Whichever grid is live at the current zoom. */
   activeGrid: WeatherFc<Point, GridProps> | null;
+  /** Point-forecast tile index (cities + the forecast time axis). */
+  cityTiles: CityTileIndex | null;
   /** True near the ground (fine grid); false far out (global lattice). */
   region: boolean;
 }
@@ -110,6 +117,7 @@ export function useWeatherData(zoom: number): WeatherData {
   const grid = useGrid();
   const globalGrid = useGlobalGrid();
   const radar = useRadarTiles();
+  const cityTiles = useCityTiles();
   const region = zoom >= GRID_ZOOM_SPLIT;
   return {
     alerts,
@@ -117,6 +125,7 @@ export function useWeatherData(zoom: number): WeatherData {
     grid,
     globalGrid,
     activeGrid: region ? grid : globalGrid,
+    cityTiles,
     region,
   };
 }

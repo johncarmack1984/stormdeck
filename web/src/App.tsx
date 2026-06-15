@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { basemapStyle } from './basemap';
 import { INITIAL_VIEW } from './config';
 import { LAYERS, type LayerCtx } from './layers';
+import { nowOffset, Timeline } from './Timeline';
 import { useWeatherData } from './weather';
 
 function DeckOverlay(props: MapboxOverlayProps) {
@@ -37,12 +38,19 @@ export default function App() {
   const data = useWeatherData(zoom);
   const [visible, setVisible] = useState(seedVisible);
   const [ui, setUi] = useState<UiState>(seedUi);
+  const [timeState, setTimeState] = useState<number | null>(null);
 
   const style = useMemo(() => basemapStyle(), []);
+
+  // Map-wide forecast time (hour offset), defaulting to "now" once the citytile
+  // axis loads. Drives every time-aware layer's DataFilter.
+  const axis = data.cityTiles;
+  const time = timeState ?? (axis ? nowOffset(axis) : 0);
 
   const ctxFor = (id: string): LayerCtx => ({
     zoom,
     region: data.region,
+    time,
     ui: ui[id] ?? {},
     setUi: (patch) => setUi((u) => ({ ...u, [id]: { ...u[id], ...patch } })),
   });
@@ -113,6 +121,10 @@ export default function App() {
           <div>grid: {data.region ? 'regional' : 'global'}</div>
         </div>
       </div>
+
+      {visible.citytile && axis && (
+        <Timeline axis={axis} time={time} onChange={setTimeState} />
+      )}
     </div>
   );
 }

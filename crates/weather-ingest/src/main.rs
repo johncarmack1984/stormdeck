@@ -13,12 +13,14 @@
 mod contract;
 mod s3;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, ensure, Context, Result};
-use contract::{AlertProps, GridProps, Severity, Snapshot};
+use contract::{AlertProps, CityForecast, CityTile, CityTileIndex, GridProps, Severity, Snapshot};
 use lambda_runtime::LambdaEvent;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tracing::{info, warn};
 use typed_geojson::{Feature, Point};
@@ -32,6 +34,8 @@ struct Config {
     grid_rows: usize,
     /// Spacing of the whole-planet conditions lattice, in degrees.
     global_step: f64,
+    /// Open-Meteo model id for the city point forecasts (e.g. `ecmwf_ifs025`).
+    citytile_model: String,
 }
 
 impl Config {
@@ -55,6 +59,8 @@ impl Config {
             grid_cols: env_usize("GRID_COLS", 8),
             grid_rows: env_usize("GRID_ROWS", 6),
             global_step,
+            citytile_model: std::env::var("CITYTILE_MODEL")
+                .unwrap_or_else(|_| "ecmwf_ifs025".to_string()),
         })
     }
 }
@@ -311,6 +317,150 @@ async fn fetch_global_grid(http: &reqwest::Client, cfg: &Config) -> Result<Value
     Ok(serde_json::to_value(Snapshot::new(now_ms(), features))?)
 }
 
+// --- city point forecasts (the tile-addressed "citytile" pattern) -----------
+
+/// Bundled top-population cities (GeoNames cities15000, deduped by metro).
+const CITIES_JSON: &str = include_str!("cities.json");
+
+#[derive(Deserialize)]
+struct City {
+    name: String,
+    lat: f64,
+    lon: f64,
+}
+
+fn cities() -> Result<Vec<City>> {
+    serde_json::from_str(CITIES_JSON).context("parsing bundled cities.json")
+}
+
+/// Zoom levels that get point-forecast tiles, plus the forecast horizon/cadence.
+const CITYTILE_MIN_Z: u8 = 3;
+const CITYTILE_MAX_Z: u8 = 6;
+const CITYTILE_DAYS: u8 = 7;
+const CITYTILE_STEP_H: usize = 3; // thin hourly → 3-hourly, like Windy
+
+/// Web-mercator tile (x, y) containing a lon/lat at zoom `z`.
+fn lonlat_to_tile(lon: f64, lat: f64, z: u8) -> (u32, u32) {
+    let n = (1u32 << z) as f64;
+    let x = ((lon + 180.0) / 360.0 * n).floor().clamp(0.0, n - 1.0) as u32;
+    let lat_rad = lat.to_radians();
+    let y = ((1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / std::f64::consts::PI) / 2.0 * n)
+        .floor()
+        .clamp(0.0, n - 1.0) as u32;
+    (x, y)
+}
+
+fn citytile_url(lats: &[String], lons: &[String], model: &str) -> String {
+    format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}\
+         &hourly=temperature_2m&temperature_unit=fahrenheit&forecast_days={CITYTILE_DAYS}\
+         &timezone=GMT&timeformat=unixtime&models={model}",
+        lats.join(","),
+        lons.join(",")
+    )
+}
+
+/// City point forecasts written as tile-addressed JSON: each tile carries the
+/// cities inside it plus their full time-series, so the client scrubs the
+/// timeline without refetching. Writes `citytile/{snapshot}/{z}/{x}/{y}.json`
+/// (immutable — the snapshot is in the path) and a short-lived
+/// `citytile/latest.json` pointer.
+async fn fetch_citytiles(http: &reqwest::Client, cfg: &Config, sink: &Sink) -> Result<()> {
+    let cities = cities()?;
+    let started = Instant::now();
+
+    // Forecast each city; Open-Meteo preserves request order, so we zip back.
+    const BATCH: usize = 100;
+    let mut series: Vec<Vec<f64>> = Vec::with_capacity(cities.len());
+    let mut hours: Option<Vec<u32>> = None;
+    let mut snapshot_ms = 0u64;
+
+    for chunk in cities.chunks(BATCH) {
+        let lats: Vec<String> = chunk.iter().map(|c| format!("{:.4}", c.lat)).collect();
+        let lons: Vec<String> = chunk.iter().map(|c| format!("{:.4}", c.lon)).collect();
+        let body: Value = http
+            .get(citytile_url(&lats, &lons, &cfg.citytile_model))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await
+            .context("Open-Meteo forecast was not JSON")?;
+        let cells = open_meteo_cells(body)?;
+        ensure!(
+            cells.len() == chunk.len(),
+            "Open-Meteo returned {} forecasts for {} cities",
+            cells.len(),
+            chunk.len()
+        );
+        for cell in &cells {
+            let h = &cell["hourly"];
+            let temps = h["temperature_2m"]
+                .as_array()
+                .context("forecast missing temperature_2m")?;
+            series.push(
+                temps
+                    .iter()
+                    .step_by(CITYTILE_STEP_H)
+                    .map(|v| v.as_f64().unwrap_or(f64::NAN))
+                    .collect(),
+            );
+            // The GMT window is shared across cities — derive the axis once.
+            if hours.is_none() {
+                let times = h["time"].as_array().context("forecast missing time")?;
+                snapshot_ms = times[0].as_u64().context("forecast time not unixtime")? * 1000;
+                hours = Some(
+                    (0..times.len())
+                        .step_by(CITYTILE_STEP_H)
+                        .map(|i| i as u32)
+                        .collect(),
+                );
+            }
+        }
+    }
+    let hours = hours.context("Open-Meteo returned no forecasts")?;
+
+    // Bucket cities into tiles at every zoom in the range.
+    let mut tiles: HashMap<(u8, u32, u32), Vec<Feature<Point, CityForecast>>> = HashMap::new();
+    for (city, t) in cities.iter().zip(series) {
+        let feat = Feature::new(
+            Point::new(vec![city.lon, city.lat]),
+            CityForecast {
+                name: city.name.clone(),
+                t,
+            },
+        );
+        for z in CITYTILE_MIN_Z..=CITYTILE_MAX_Z {
+            let (x, y) = lonlat_to_tile(city.lon, city.lat, z);
+            tiles.entry((z, x, y)).or_default().push(feat.clone());
+        }
+    }
+
+    // Tiles are immutable (snapshot in the path); the pointer is short-lived.
+    let tile_count = tiles.len();
+    for ((z, x, y), feats) in tiles {
+        let tile = CityTile::new(snapshot_ms, hours.clone(), feats);
+        let name = format!("citytile/{snapshot_ms}/{z}/{x}/{y}.json");
+        sink.publish(&name, &serde_json::to_value(tile)?, 31_536_000)
+            .await?;
+    }
+    let index = CityTileIndex {
+        snapshot_ms,
+        hours,
+        min_zoom: CITYTILE_MIN_Z,
+        max_zoom: CITYTILE_MAX_Z,
+    };
+    sink.publish("citytile/latest.json", &serde_json::to_value(index)?, 300)
+        .await?;
+
+    info!(
+        "citytile: {} cities → {tile_count} tiles (z{CITYTILE_MIN_Z}-{CITYTILE_MAX_Z}) in {:.1?}",
+        cities.len(),
+        started.elapsed()
+    );
+    Ok(())
+}
+
 #[derive(Clone)]
 enum Sink {
     S3(s3::S3Writer),
@@ -335,8 +485,11 @@ impl Sink {
                 info!("published s3://{}/{key} ({len} bytes)", writer.bucket);
             }
             Sink::Local { dir } => {
-                std::fs::create_dir_all(dir)?;
                 let path = dir.join(name);
+                // `name` may be a nested tile path (citytile/…/z/x/y.json).
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
                 std::fs::write(&path, &bytes)?;
                 info!("wrote {} ({len} bytes)", path.display());
             }
@@ -362,8 +515,12 @@ async fn run_job(job: &str, cfg: &Config, http: &reqwest::Client, sink: &Sink) -
         sink.publish("global.json", &global, 3600).await?;
         done.push("global");
     }
+    if matches!(job, "citytile" | "all") {
+        fetch_citytiles(http, cfg, sink).await?;
+        done.push("citytile");
+    }
     if done.is_empty() {
-        bail!("unknown job '{job}' (expected alerts | grid | global | all)");
+        bail!("unknown job '{job}' (expected alerts | grid | global | citytile | all)");
     }
     Ok(json!({ "ok": true, "jobs": done }))
 }

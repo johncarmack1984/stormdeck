@@ -97,6 +97,61 @@ pub struct GridProps {
     pub j: Option<u32>,
 }
 
+/// One city's point forecast: its name and a temperature series (°F) aligned
+/// element-for-element with the enclosing tile's `hours` axis.
+#[derive(Serialize, Clone)]
+#[cfg_attr(feature = "ts", derive(specta::Type))]
+pub struct CityForecast {
+    pub name: String,
+    // Always-present reals; override the `number | null` that bare f64 exports.
+    #[cfg_attr(feature = "ts", specta(type = Vec<specta_typescript::Number>))]
+    pub t: Vec<f64>,
+}
+
+/// A point-forecast tile: a `FeatureCollection` of cities (each a
+/// `Feature<Point, CityForecast>`) plus the shared forecast time axis. The
+/// whole series ships per tile so the client scrubs the timeline with **no
+/// refetch** — the Windy `citytile` trick. Like [`Snapshot`], the timestamp is
+/// a flattened foreign member; the web models it as
+/// `FeatureCollection<Point, CityForecast> & { snapshotMs, hours }`.
+/// Serialize-only, so no specta binding (the web alias composes it).
+#[derive(Serialize)]
+pub struct CityTile<G, P> {
+    #[serde(rename = "snapshotMs")]
+    pub snapshot_ms: u64,
+    /// Hour offsets from `snapshotMs`, e.g. `[0, 3, 6, …]`.
+    pub hours: Vec<u32>,
+    #[serde(flatten)]
+    pub collection: FeatureCollection<G, P>,
+}
+
+impl<G, P> CityTile<G, P> {
+    /// Wrap a tile's features with the shared snapshot time + hour axis.
+    pub fn new(snapshot_ms: u64, hours: Vec<u32>, features: Vec<Feature<G, P>>) -> Self {
+        Self {
+            snapshot_ms,
+            hours,
+            collection: features.into_iter().collect(),
+        }
+    }
+}
+
+/// The `citytile/latest.json` pointer: which snapshot is current, its time
+/// axis, and the zoom range that has tiles. The web reads this first, then
+/// builds tile URLs against `snapshotMs` (so old snapshots cache immutably).
+#[derive(Serialize)]
+#[cfg_attr(feature = "ts", derive(specta::Type))]
+pub struct CityTileIndex {
+    #[serde(rename = "snapshotMs")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub snapshot_ms: u64,
+    pub hours: Vec<u32>,
+    #[serde(rename = "minZoom")]
+    pub min_zoom: u8,
+    #[serde(rename = "maxZoom")]
+    pub max_zoom: u8,
+}
+
 #[cfg(all(test, feature = "ts"))]
 mod export {
     use specta::Types;
@@ -109,7 +164,9 @@ mod export {
         // Severity; GridProps stands alone.
         let weather = Types::default()
             .register::<super::AlertProps>()
-            .register::<super::GridProps>();
+            .register::<super::GridProps>()
+            .register::<super::CityForecast>()
+            .register::<super::CityTileIndex>();
         Typescript::default()
             .header("// Generated from crates/weather-ingest/src/contract.rs by `just build types`. Do not edit.\n")
             .export_to(
