@@ -32,8 +32,8 @@ jobs:
       - run: pnpm run build
         working-directory: web
         env:
-          # Same origin as the tiles and weather feeds: all fetches relative.
-          VITE_API_BASE: ''
+          # API_BASE resolves to '' in production builds (web/src/config.ts) —
+          # same origin as the tiles and weather feeds, so all fetches relative.
           BASE_PATH: /
       - uses: aws-actions/configure-aws-credentials@v6
         with:

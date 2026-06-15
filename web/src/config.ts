@@ -1,9 +1,11 @@
-/** Empty in production — the site, tiles and weather share one origin, so every
- * fetch is relative. In dev (`pnpm dev`) it defaults to the live site, so the
- * app runs against real data with no local backend; `just dev` overrides it to
- * the local martin (see scripts/dev.sh). */
+/** Tile + weather origin, resolved automatically by build mode — no env var to
+ * set anywhere. Empty in the production build (the app is same-origin with the
+ * tiles and weather, so every fetch is relative); the live site under `just web
+ * dev` (real data, no local backend). `just dev` sets VITE_API_BASE to the local
+ * martin for the full offline stack (see scripts/dev.sh). */
 export const API_BASE: string =
-  import.meta.env.VITE_API_BASE ?? 'https://stormdeck.live';
+  import.meta.env.VITE_API_BASE ??
+  (import.meta.env.DEV ? 'https://stormdeck.live' : '');
 
 /** Weather JSON base; defaults to API_BASE, so `pnpm dev` pulls live weather
  * too. `just dev` sets this empty so vite serves web/public/weather/. */
