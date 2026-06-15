@@ -126,8 +126,18 @@ export class StormdeckStack extends Stack {
       enableAcceptEncodingBrotli: true,
     });
 
-    // Martin emits its own CORS headers; we only pin down browser caching.
+    // Martin's own CORS headers don't survive the Lambda→CloudFront path, so
+    // add them at the edge (like the weather feed) — lets the app run
+    // cross-origin: dev against prod, a future service-demo page, or embedders.
+    // Plus pin browser caching.
     const tilesHeaders = new cloudfront.ResponseHeadersPolicy(this, 'TilesHeaders', {
+      corsBehavior: {
+        accessControlAllowCredentials: false,
+        accessControlAllowOrigins: ['*'],
+        accessControlAllowMethods: ['GET', 'HEAD'],
+        accessControlAllowHeaders: ['*'],
+        originOverride: true,
+      },
       customHeadersBehavior: {
         customHeaders: [
           { header: 'Cache-Control', value: 'public, max-age=3600', override: false },

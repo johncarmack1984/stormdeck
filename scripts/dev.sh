@@ -25,5 +25,7 @@ command -v martin >/dev/null || {
 trap 'kill 0' EXIT INT TERM
 echo "==> martin: http://localhost:3030  |  web: http://localhost:5173"
 martin --listen-addresses 127.0.0.1:3030 "${SOURCES[@]}" &
-(cd web && pnpm run dev) &
+# Override the dev default (the live site) to this local martin + vite-served
+# weather, for offline / tile / basemap work.
+(cd web && VITE_API_BASE=http://localhost:3030 VITE_WEATHER_BASE= pnpm run dev) &
 wait
