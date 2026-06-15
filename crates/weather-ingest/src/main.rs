@@ -11,6 +11,7 @@
 //!     (default web/public/weather/) so `just dev` has live data.
 
 mod contract;
+mod gfs;
 mod s3;
 
 use std::collections::HashMap;
@@ -34,8 +35,6 @@ struct Config {
     grid_rows: usize,
     /// Spacing of the whole-planet conditions lattice, in degrees.
     global_step: f64,
-    /// Open-Meteo model id for the city point forecasts (e.g. `ecmwf_ifs025`).
-    citytile_model: String,
 }
 
 impl Config {
@@ -59,8 +58,6 @@ impl Config {
             grid_cols: env_usize("GRID_COLS", 8),
             grid_rows: env_usize("GRID_ROWS", 6),
             global_step,
-            citytile_model: std::env::var("CITYTILE_MODEL")
-                .unwrap_or_else(|_| "ecmwf_ifs025".to_string()),
         })
     }
 }
@@ -327,17 +324,29 @@ struct City {
     name: String,
     lat: f64,
     lon: f64,
+    pop: u64,
 }
 
 fn cities() -> Result<Vec<City>> {
     serde_json::from_str(CITIES_JSON).context("parsing bundled cities.json")
 }
 
-/// Zoom levels that get point-forecast tiles, plus the forecast horizon/cadence.
+/// Lowest zoom a city's label appears at, by population — keeps low zooms from
+/// cluttering (megacities show first, smaller towns only once zoomed in).
+fn min_zoom(pop: u64) -> u8 {
+    match pop {
+        p if p >= 5_000_000 => 3,
+        p if p >= 1_000_000 => 4,
+        p if p >= 300_000 => 5,
+        _ => 6,
+    }
+}
+
+/// Tile zoom range that gets point-forecast tiles, plus the GFS forecast horizon.
 const CITYTILE_MIN_Z: u8 = 3;
 const CITYTILE_MAX_Z: u8 = 6;
-const CITYTILE_DAYS: u8 = 7;
-const CITYTILE_STEP_H: usize = 3; // thin hourly → 3-hourly, like Windy
+const CITYTILE_FHOUR_MAX: u16 = 168; // 7 days
+const CITYTILE_STEP_H: u16 = 3; // 3-hourly (GFS pgrb2 cadence past f120)
 
 /// Web-mercator tile (x, y) containing a lon/lat at zoom `z`.
 fn lonlat_to_tile(lon: f64, lat: f64, z: u8) -> (u32, u32) {
@@ -350,99 +359,85 @@ fn lonlat_to_tile(lon: f64, lat: f64, z: u8) -> (u32, u32) {
     (x, y)
 }
 
-fn citytile_url(lats: &[String], lons: &[String], model: &str) -> String {
-    format!(
-        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}\
-         &hourly=temperature_2m&temperature_unit=fahrenheit&forecast_days={CITYTILE_DAYS}\
-         &timezone=GMT&timeformat=unixtime&models={model}",
-        lats.join(","),
-        lons.join(",")
-    )
-}
-
 /// City point forecasts written as tile-addressed JSON: each tile carries the
 /// cities inside it plus their full time-series, so the client scrubs the
-/// timeline without refetching. Writes `citytile/{snapshot}/{z}/{x}/{y}.json`
-/// (immutable — the snapshot is in the path) and a short-lived
-/// `citytile/latest.json` pointer.
-async fn fetch_citytiles(http: &reqwest::Client, cfg: &Config, sink: &Sink) -> Result<()> {
+/// timeline without refetching. Sourced from GFS (NODD) — one decoded field
+/// samples every city for free, so the city count is bounded by clutter, not
+/// API metering. Writes `citytile/{snapshot}/{z}/{x}/{y}.json` (immutable — the
+/// snapshot is in the path) and a short-lived `citytile/latest.json` pointer.
+async fn fetch_citytiles(http: &reqwest::Client, sink: &Sink) -> Result<()> {
     let cities = cities()?;
     let started = Instant::now();
 
-    // Forecast each city; Open-Meteo preserves request order, so we zip back.
-    const BATCH: usize = 100;
-    let mut series: Vec<Vec<f64>> = Vec::with_capacity(cities.len());
-    let mut hours: Option<Vec<u32>> = None;
-    let mut snapshot_ms = 0u64;
+    let (date, cyc) = gfs::latest_cycle(now_ms() / 1000);
+    let snapshot_ms = gfs::cycle_ms(&date, cyc)?;
+    let fhours: Vec<u16> = (0..=CITYTILE_FHOUR_MAX)
+        .step_by(CITYTILE_STEP_H as usize)
+        .collect();
+    let hours: Vec<u32> = fhours.iter().map(|&f| u32::from(f)).collect();
 
-    for chunk in cities.chunks(BATCH) {
-        let lats: Vec<String> = chunk.iter().map(|c| format!("{:.4}", c.lat)).collect();
-        let lons: Vec<String> = chunk.iter().map(|c| format!("{:.4}", c.lon)).collect();
-        let body: Value = http
-            .get(citytile_url(&lats, &lons, &cfg.citytile_model))
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await
-            .context("Open-Meteo forecast was not JSON")?;
-        let cells = open_meteo_cells(body)?;
-        ensure!(
-            cells.len() == chunk.len(),
-            "Open-Meteo returned {} forecasts for {} cities",
-            cells.len(),
-            chunk.len()
-        );
-        for cell in &cells {
-            let h = &cell["hourly"];
-            let temps = h["temperature_2m"]
-                .as_array()
-                .context("forecast missing temperature_2m")?;
-            series.push(
-                temps
-                    .iter()
-                    .step_by(CITYTILE_STEP_H)
-                    .map(|v| v.as_f64().unwrap_or(f64::NAN))
-                    .collect(),
-            );
-            // The GMT window is shared across cities — derive the axis once.
-            if hours.is_none() {
-                let times = h["time"].as_array().context("forecast missing time")?;
-                snapshot_ms = times[0].as_u64().context("forecast time not unixtime")? * 1000;
-                hours = Some(
-                    (0..times.len())
-                        .step_by(CITYTILE_STEP_H)
-                        .map(|i| i as u32)
-                        .collect(),
-                );
+    // Sample every city at every step. Fetch fields concurrently (bounded) and
+    // sample each as it decodes — one ~4 MB grid resident at a time.
+    let mut series: Vec<Vec<f64>> = vec![vec![f64::NAN; fhours.len()]; cities.len()];
+    const FETCH_CONC: usize = 12;
+    for chunk in fhours.chunks(FETCH_CONC) {
+        let mut set = tokio::task::JoinSet::new();
+        for &fh in chunk {
+            let (http, date) = (http.clone(), date.clone());
+            set.spawn(async move {
+                gfs::fetch_field(&http, &date, cyc, fh, "TMP", "2 m above ground")
+                    .await
+                    .map(|field| (fh, field))
+            });
+        }
+        while let Some(res) = set.join_next().await {
+            let (fh, field) = res??;
+            let k = (fh / CITYTILE_STEP_H) as usize;
+            for (ci, city) in cities.iter().enumerate() {
+                series[ci][k] = f64::from(gfs::k_to_f(field.sample(city.lat, city.lon)));
             }
         }
     }
-    let hours = hours.context("Open-Meteo returned no forecasts")?;
+    info!(
+        "GFS {date}/{cyc:02}z: {} fields sampled in {:.1?}",
+        fhours.len(),
+        started.elapsed()
+    );
 
-    // Bucket cities into tiles at every zoom in the range.
+    // Bucket cities into tiles, gated by each city's min zoom (denser as you
+    // zoom in).
     let mut tiles: HashMap<(u8, u32, u32), Vec<Feature<Point, CityForecast>>> = HashMap::new();
-    for (city, t) in cities.iter().zip(series) {
+    for (ci, city) in cities.iter().enumerate() {
         let feat = Feature::new(
             Point::new(vec![city.lon, city.lat]),
             CityForecast {
                 name: city.name.clone(),
-                t,
+                t: series[ci].clone(),
             },
         );
-        for z in CITYTILE_MIN_Z..=CITYTILE_MAX_Z {
+        for z in min_zoom(city.pop)..=CITYTILE_MAX_Z {
             let (x, y) = lonlat_to_tile(city.lon, city.lat, z);
             tiles.entry((z, x, y)).or_default().push(feat.clone());
         }
     }
 
-    // Tiles are immutable (snapshot in the path); the pointer is short-lived.
-    let tile_count = tiles.len();
+    // Serialize, then write tiles concurrently (immutable — snapshot in path).
+    let mut payloads: Vec<(String, Value)> = Vec::with_capacity(tiles.len());
     for ((z, x, y), feats) in tiles {
-        let tile = CityTile::new(snapshot_ms, hours.clone(), feats);
-        let name = format!("citytile/{snapshot_ms}/{z}/{x}/{y}.json");
-        sink.publish(&name, &serde_json::to_value(tile)?, 31_536_000)
-            .await?;
+        let body = serde_json::to_value(CityTile::new(snapshot_ms, hours.clone(), feats))?;
+        payloads.push((format!("citytile/{snapshot_ms}/{z}/{x}/{y}.json"), body));
+    }
+    let tile_count = payloads.len();
+    const WRITE_CONC: usize = 16;
+    for chunk in payloads.chunks(WRITE_CONC) {
+        let mut set = tokio::task::JoinSet::new();
+        for (name, body) in chunk {
+            let (sink, name, body) = (sink.clone(), name.clone(), body.clone());
+            set.spawn(async move { sink.publish(&name, &body, 31_536_000).await });
+        }
+        while let Some(res) = set.join_next().await {
+            res??;
+        }
     }
     let index = CityTileIndex {
         snapshot_ms,
@@ -516,7 +511,7 @@ async fn run_job(job: &str, cfg: &Config, http: &reqwest::Client, sink: &Sink) -
         done.push("global");
     }
     if matches!(job, "citytile" | "all") {
-        fetch_citytiles(http, cfg, sink).await?;
+        fetch_citytiles(http, sink).await?;
         done.push("citytile");
     }
     if done.is_empty() {

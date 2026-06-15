@@ -6,6 +6,10 @@ license.workspace = true
 
 [dependencies]
 anyhow = "1"
+# GRIB2 decoder for GFS fields from NODD. template 5.3 (complex packing +
+# spatial differencing) is core/pure-Rust; default features pull C codecs
+# (openjpeg/libaec/proj) we don't need, so turn them off.
+grib = { version = "0.15", default-features = false }
 hex = "0.4"
 hmac = "0.13"
 lambda_runtime = "1"
