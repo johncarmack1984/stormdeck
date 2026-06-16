@@ -16,6 +16,7 @@ import {
   aws_s3 as s3,
   aws_scheduler as scheduler,
   aws_scheduler_targets as targets,
+  aws_ssm as ssm,
 } from 'aws-cdk-lib';
 import { RustFunction } from 'cargo-lambda-cdk';
 import { Construct } from 'constructs';
@@ -113,6 +114,27 @@ export class StormdeckStack extends Stack {
       },
     });
     bucket.grantPut(ingest, 'weather/*');
+
+    // Least-privilege role for manual/ops invocation of weather-ingest (e.g.
+    // priming after a change). Its only permission is invoking this function;
+    // the trusted principal lives in SSM so no foreign account IDs land in this
+    // open-source repo (set /stormdeck/invoker-principal before deploying).
+    // Resolved at deploy via valueForStringParameter, so synth stays env-agnostic.
+    const invoker = new iam.Role(this, 'WeatherIngestInvoker', {
+      roleName: `${PROJECT}-invoker`,
+      assumedBy: new iam.ArnPrincipal(
+        ssm.StringParameter.valueForStringParameter(
+          this,
+          '/stormdeck/invoker-principal',
+        ),
+      ),
+      description: 'Least-privilege: invoke weather-ingest (manual prime/ops)',
+    });
+    ingest.grantInvoke(invoker);
+    new CfnOutput(this, 'InvokerRoleArn', {
+      value: invoker.roleArn,
+      description: 'Assume to invoke weather-ingest (lambda:InvokeFunction only)',
+    });
 
     // Basemap tiles change only when the pmtiles file is replaced: cache hard.
     const tilesCache = new cloudfront.CachePolicy(this, 'TilesCache', {
