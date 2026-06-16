@@ -1,7 +1,7 @@
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import type { MapboxOverlayProps } from '@deck.gl/mapbox';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ViewStateChangeEvent } from 'react-map-gl/maplibre';
 import { Map, useControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -10,19 +10,13 @@ import { Switch } from '@/components/ui/switch';
 import { basemapStyle } from './basemap';
 import { INITIAL_VIEW } from './config';
 import { LAYERS, type LayerCtx } from './layers';
-import { nowOffset, Timeline } from './Timeline';
+import { nextStep, nowOffset, Timeline } from './Timeline';
 import { useWeatherData } from './weather';
 
 function DeckOverlay(props: MapboxOverlayProps) {
   const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));
   overlay.setProps(props);
   return null;
-}
-
-function age(ms?: number): string {
-  if (!ms) return '—';
-  const min = Math.round((Date.now() - ms) / 60_000);
-  return min <= 0 ? 'just now' : `${min} min ago`;
 }
 
 type UiState = Record<string, Record<string, number>>;
@@ -39,6 +33,7 @@ export default function App() {
   const [visible, setVisible] = useState(seedVisible);
   const [ui, setUi] = useState<UiState>(seedUi);
   const [timeState, setTimeState] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
 
   const style = useMemo(() => basemapStyle(), []);
 
@@ -46,6 +41,16 @@ export default function App() {
   // axis loads. Drives every time-aware layer's DataFilter.
   const axis = data.cityTiles;
   const time = timeState ?? (axis ? nowOffset(axis) : 0);
+
+  // Play: step the timeline forward, looping.
+  useEffect(() => {
+    if (!playing || !axis) return;
+    const id = setInterval(
+      () => setTimeState((t) => nextStep(t ?? nowOffset(axis), axis)),
+      700,
+    );
+    return () => clearInterval(id);
+  }, [playing, axis]);
 
   const ctxFor = (id: string): LayerCtx => ({
     zoom,
@@ -112,19 +117,25 @@ export default function App() {
                 }
               />
             </div>
-            {visible[l.id] && l.controls?.(ctxFor(l.id))}
+            {visible[l.id] && l.controls?.(ctxFor(l.id), l.select(data))}
           </Fragment>
         ))}
-        <div className="mt-1 border-white/15 border-t pt-2 text-slate-400 text-xs leading-normal">
-          <div>alerts: {age(data.alerts?.generated_ms)}</div>
-          <div>conditions: {age(data.activeGrid?.generated_ms)}</div>
-          <div>grid: {data.region ? 'regional' : 'global'}</div>
-        </div>
+        {axis && (
+          <>
+            <hr className="my-0.5 border-white/15" />
+            <Timeline
+              axis={axis}
+              time={time}
+              playing={playing}
+              onChange={(t) => {
+                setPlaying(false);
+                setTimeState(t);
+              }}
+              onTogglePlay={() => setPlaying((p) => !p)}
+            />
+          </>
+        )}
       </div>
-
-      {visible.citytile && axis && (
-        <Timeline axis={axis} time={time} onChange={setTimeState} />
-      )}
     </div>
   );
 }

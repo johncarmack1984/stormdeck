@@ -22,6 +22,13 @@ export type WeatherFc<G, P> = FeatureCollection<G, P> & {
   generated_ms: number;
 };
 
+/** Human "N min ago" for a feed's `generated_ms` (or model snapshot) time. */
+export function age(ms?: number): string {
+  if (!ms) return '—';
+  const min = Math.round((Date.now() - ms) / 60_000);
+  return min <= 0 ? 'just now' : `${min} min ago`;
+}
+
 function useFeed<T>(path: string, intervalMs: number): T | null {
   const [data, setData] = useState<T | null>(null);
   useEffect(() => {

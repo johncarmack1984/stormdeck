@@ -2,7 +2,7 @@ import type { Color } from '@deck.gl/core';
 import { TextLayer } from '@deck.gl/layers';
 import type { Feature, Point } from '../generated/geojson';
 import type { GridProps } from '../generated/weather';
-import type { WeatherFc } from '../weather';
+import { age, type WeatherFc } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
@@ -53,6 +53,11 @@ export const temp: WeatherLayer<GridFc> = {
       }),
     ];
   },
+  controls: (ctx, grid) => (
+    <div className="text-slate-400 text-xs">
+      {age(grid?.generated_ms)} · {ctx.region ? 'regional' : 'global'}
+    </div>
+  ),
   tooltip: (o) => {
     const p = o?.properties;
     if (p?.tempF == null) return null;

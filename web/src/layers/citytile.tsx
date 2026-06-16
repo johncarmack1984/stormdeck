@@ -7,6 +7,7 @@ import { TileLayer } from '@deck.gl/geo-layers';
 import { TextLayer } from '@deck.gl/layers';
 import { WEATHER_BASE } from '../config';
 import type { CityForecast, CityTileIndex } from '../generated/weather';
+import { age } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
@@ -105,6 +106,9 @@ export const citytile: WeatherLayer<CityTileIndex> = {
       updateTriggers: { renderSubLayers: ctx.time },
     }),
   ],
+  controls: (_ctx, idx) => (
+    <div className="text-slate-400 text-xs">GFS · {age(idx?.snapshotMs)}</div>
+  ),
   tooltip: (o) => {
     const d = o as CityHour | undefined;
     return d?.name ? `${d.name}: ${Math.round(d.temp)}°` : null;

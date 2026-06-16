@@ -2,7 +2,7 @@ import type { Color } from '@deck.gl/core';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import type { Geometry } from '../generated/geojson';
 import type { AlertProps } from '../generated/weather';
-import type { WeatherFc } from '../weather';
+import { age, type WeatherFc } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
@@ -44,6 +44,9 @@ export const alerts: WeatherLayer<AlertFc> = {
       getLineColor: (f: any) => LINE[f.properties.severity] ?? LINE.Unknown,
     }),
   ],
+  controls: (_ctx, fc) => (
+    <div className="text-slate-400 text-xs">{age(fc?.generated_ms)}</div>
+  ),
   tooltip: (o) => {
     const p = o?.properties;
     if (!p?.event) return null;

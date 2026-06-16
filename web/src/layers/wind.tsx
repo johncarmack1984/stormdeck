@@ -2,7 +2,7 @@ import type { Color } from '@deck.gl/core';
 import { LineLayer, ScatterplotLayer } from '@deck.gl/layers';
 import type { Point } from '../generated/geojson';
 import type { GridProps } from '../generated/weather';
-import type { WeatherFc } from '../weather';
+import { age, type WeatherFc } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
@@ -76,4 +76,9 @@ export const wind: WeatherLayer<GridFc> = {
       }),
     ];
   },
+  controls: (ctx, grid) => (
+    <div className="text-slate-400 text-xs">
+      {age(grid?.generated_ms)} · {ctx.region ? 'regional' : 'global'}
+    </div>
+  ),
 };

@@ -37,8 +37,9 @@ export interface WeatherLayer<D = unknown> {
   select: (w: WeatherData) => D | null;
   /** Build the deck.gl layer(s); owns any per-layer transform. */
   build: (data: D, ctx: LayerCtx) => Layer[];
-  /** Optional control rendered under the toggle while the layer is visible. */
-  controls?: (ctx: LayerCtx) => ReactNode;
+  /** Optional control/status rendered under the toggle while the layer is
+   * visible; gets the layer's selected data (for freshness, counts, …). */
+  controls?: (ctx: LayerCtx, data: D | null) => ReactNode;
   /** Optional tooltip for a picked object belonging to this layer. */
   tooltip?: (object: any) => string | null;
 }
