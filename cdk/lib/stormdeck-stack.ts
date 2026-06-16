@@ -55,6 +55,12 @@ export class StormdeckStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      // citytile writes a fresh {snapshot}/ tree each run; expire old snapshots
+      // so they don't accumulate. latest.json is rewritten each run, so it
+      // stays under the age cutoff and never ages out.
+      lifecycleRules: [
+        { prefix: 'weather/citytile/', expiration: Duration.days(2) },
+      ],
     });
 
     // martin ≥ v0.14 serves Lambda events natively; the zip is the upstream
@@ -93,7 +99,9 @@ export class StormdeckStack extends Stack {
       manifestPath: CRATES_MANIFEST,
       binaryName: 'weather-ingest',
       architecture: lambda.Architecture.ARM_64,
-      memorySize: 256,
+      // citytile decodes GFS GRIB fields (~4 MB grids, ~12 in flight); the
+      // other jobs are lighter.
+      memorySize: 512,
       // The global job paces ~12 Open-Meteo batches 15s apart (+ 429 backoff).
       timeout: Duration.seconds(600),
       environment: {
@@ -116,12 +124,14 @@ export class StormdeckStack extends Stack {
       enableAcceptEncodingBrotli: true,
     });
 
-    // Weather snapshots are regenerated every few minutes: cache briefly.
+    // Weather JSON refreshes every few minutes, but immutable citytile tiles
+    // (snapshot in the path) set a 1-year max-age. Keep the cap high so each
+    // object's own Cache-Control drives its TTL — fresh JSON, hard-cached tiles.
     const weatherCache = new cloudfront.CachePolicy(this, 'WeatherCache', {
-      comment: 'weather JSON snapshots',
+      comment: 'weather JSON snapshots + immutable citytile tiles',
       minTtl: Duration.seconds(0),
       defaultTtl: Duration.seconds(60),
-      maxTtl: Duration.seconds(300),
+      maxTtl: Duration.seconds(31_536_000),
       enableAcceptEncodingGzip: true,
       enableAcceptEncodingBrotli: true,
     });
@@ -260,13 +270,15 @@ export class StormdeckStack extends Stack {
         '_9fa95b9ad4ef666e498d1b9de17ba1f8.jkddzztszm.acm-validations.aws.',
     });
 
-    // EventBridge Scheduler triggers (14M invocations/month free tier).
-    // Each lattice point is one Open-Meteo API call; together these rates
-    // stay under their 10k/day non-commercial tier (~9k/day).
+    // EventBridge Scheduler triggers (14M invocations/month free tier). The
+    // Open-Meteo jobs (grid/global) count each lattice point as one API call,
+    // staying under the 10k/day non-commercial tier; citytile is free GFS GRIB
+    // from NODD (no per-call limit), refreshed once per cycle window.
     const jobs: Array<[string, Duration]> = [
       ['alerts', Duration.minutes(5)],
       ['grid', Duration.minutes(30)],
       ['global', Duration.hours(6)],
+      ['citytile', Duration.hours(6)],
     ];
     for (const [job, every] of jobs) {
       new scheduler.Schedule(this, `Schedule-${job}`, {
