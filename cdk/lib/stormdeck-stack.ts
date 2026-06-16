@@ -56,11 +56,12 @@ export class StormdeckStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      // citytile writes a fresh {snapshot}/ tree each run; expire old snapshots
-      // so they don't accumulate. latest.json is rewritten each run, so it
-      // stays under the age cutoff and never ages out.
+      // citytile + windtex each write a fresh {snapshot}/ tree per run; expire
+      // old snapshots so they don't accumulate. Their latest.json pointers are
+      // rewritten each run, so they stay under the age cutoff and never age out.
       lifecycleRules: [
         { prefix: 'weather/citytile/', expiration: Duration.days(2) },
+        { prefix: 'weather/windtex/', expiration: Duration.days(2) },
       ],
     });
 
@@ -100,7 +101,8 @@ export class StormdeckStack extends Stack {
       manifestPath: CRATES_MANIFEST,
       binaryName: 'weather-ingest',
       architecture: lambda.Architecture.ARM_64,
-      // citytile decodes GFS GRIB fields (~4 MB grids, ~12 in flight); the
+      // citytile + windtex decode GFS GRIB fields (~4 MB grids, several in
+      // flight; windtex also holds a u/v pair while its PNG encodes); the
       // other jobs are lighter.
       memorySize: 512,
       // The global job paces ~12 Open-Meteo batches 15s apart (+ 429 backoff).
@@ -301,6 +303,7 @@ export class StormdeckStack extends Stack {
       ['grid', Duration.minutes(30)],
       ['global', Duration.hours(6)],
       ['citytile', Duration.hours(6)],
+      ['windtex', Duration.hours(6)],
     ];
     for (const [job, every] of jobs) {
       new scheduler.Schedule(this, `Schedule-${job}`, {

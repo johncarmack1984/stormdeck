@@ -14,6 +14,15 @@ const NI: usize = 1440;
 const NJ: usize = 721;
 const NPTS: usize = NI * NJ;
 
+/// Equirectangular wind-texture dimensions (the native 0.25° grid).
+pub const TEX_WIDTH: u32 = NI as u32;
+pub const TEX_HEIGHT: u32 = NJ as u32;
+/// Surface-wind normalization half-range (m/s): u and v map linearly from
+/// [−WIND_MS_MAX, WIND_MS_MAX] onto a byte, and the web denormalizes with the
+/// same bounds (carried in windtex/latest.json). 40 m/s (~90 mph) covers all
+/// but the most extreme 10 m winds, which clamp.
+pub const WIND_MS_MAX: f32 = 40.0;
+
 /// A decoded 0.25° global field, row-major from (90N, 0E).
 pub struct Field {
     values: Vec<f32>,
@@ -55,6 +64,34 @@ impl Field {
 /// Kelvin → °F.
 pub fn k_to_f(k: f32) -> f32 {
     (k - 273.15) * 9.0 / 5.0 + 32.0
+}
+
+/// Encode a u/v field pair as an equirectangular RGB PNG — R = u, G = v (each
+/// normalized over ±[`WIND_MS_MAX`]), B = 0 — the format `mapbox/webgl-wind`
+/// consumes. Row 0 is 90°N and column 0 is 0°E (the GFS scan order), so the
+/// texture spans lon 0→360 left→right and lat 90→−90 top→bottom; both fields
+/// must be the native 0.25° grid (they are, straight from [`Field::decode`]).
+pub fn encode_uv_png(u: &Field, v: &Field) -> Result<Vec<u8>> {
+    let norm = |x: f32| {
+        (((x + WIND_MS_MAX) / (2.0 * WIND_MS_MAX)) * 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    let mut rgb = vec![0u8; NPTS * 3];
+    for k in 0..NPTS {
+        rgb[k * 3] = norm(u.values[k]);
+        rgb[k * 3 + 1] = norm(v.values[k]);
+    }
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, NI as u32, NJ as u32);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().context("PNG header")?;
+        w.write_image_data(&rgb).context("PNG encode")?;
+        w.finish().context("PNG finish")?;
+    }
+    Ok(out)
 }
 
 fn field_url(date: &str, hour: u8, fhour: u16) -> String {

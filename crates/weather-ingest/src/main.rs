@@ -19,7 +19,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, ensure, Context, Result};
-use contract::{AlertProps, CityForecast, CityTile, CityTileIndex, GridProps, Severity, Snapshot};
+use contract::{
+    AlertProps, CityForecast, CityTile, CityTileIndex, GridProps, Severity, Snapshot, WindTexIndex,
+};
 use lambda_runtime::LambdaEvent;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -456,6 +458,77 @@ async fn fetch_citytiles(http: &reqwest::Client, sink: &Sink) -> Result<()> {
     Ok(())
 }
 
+// --- wind u/v textures (the webgl-wind particle substrate) -------------------
+
+/// Forecast horizon for the wind textures — the same axis as citytile, so the
+/// one map-wide timeline scrubs labels and particles together.
+const WINDTEX_FHOUR_MAX: u16 = 168; // 7 days
+const WINDTEX_STEP_H: u16 = 3; // 3-hourly
+
+/// Surface-wind u/v textures, one per forecast step: an equirectangular RGB PNG
+/// (R = u, G = v, normalized over ±`gfs::WIND_MS_MAX`) decoded from GFS
+/// UGRD/VGRD at 10 m — the format `mapbox/webgl-wind` advects particles through.
+/// Snapshot-addressed like citytile (`windtex/{snapshot}/{fhour}.png`, immutable
+/// — snapshot in the path) with a short-lived `windtex/latest.json` index
+/// carrying the hour axis, texture dims, and the m/s bounds the web denormalizes
+/// with. One ~0.9 MB GFS field per component covers the whole planet, free.
+async fn fetch_windtex(http: &reqwest::Client, sink: &Sink) -> Result<()> {
+    let started = Instant::now();
+    let (date, cyc) = gfs::latest_cycle(now_ms() / 1000);
+    let snapshot_ms = gfs::cycle_ms(&date, cyc)?;
+    let fhours: Vec<u16> = (0..=WINDTEX_FHOUR_MAX)
+        .step_by(WINDTEX_STEP_H as usize)
+        .collect();
+
+    // Each step holds two ~1M-point f32 grids while its PNG encodes; cap how many
+    // are in flight so peak memory stays well under the function's 512 MB.
+    const CONC: usize = 6;
+    for chunk in fhours.chunks(CONC) {
+        let mut set = tokio::task::JoinSet::new();
+        for &fh in chunk {
+            let (http, date) = (http.clone(), date.clone());
+            set.spawn(async move {
+                let (u, v) = tokio::try_join!(
+                    gfs::fetch_field(&http, &date, cyc, fh, "UGRD", "10 m above ground"),
+                    gfs::fetch_field(&http, &date, cyc, fh, "VGRD", "10 m above ground"),
+                )?;
+                anyhow::Ok((fh, gfs::encode_uv_png(&u, &v)?))
+            });
+        }
+        while let Some(res) = set.join_next().await {
+            let (fh, png) = res??;
+            sink.publish_bytes(
+                &format!("windtex/{snapshot_ms}/{fh}.png"),
+                png,
+                "image/png",
+                31_536_000,
+            )
+            .await?;
+        }
+    }
+
+    let index = WindTexIndex {
+        snapshot_ms,
+        hours: fhours.iter().map(|&f| u32::from(f)).collect(),
+        width: gfs::TEX_WIDTH,
+        height: gfs::TEX_HEIGHT,
+        u_min: -gfs::WIND_MS_MAX,
+        u_max: gfs::WIND_MS_MAX,
+        v_min: -gfs::WIND_MS_MAX,
+        v_max: gfs::WIND_MS_MAX,
+    };
+    sink.publish("windtex/latest.json", &serde_json::to_value(index)?, 300)
+        .await?;
+    info!(
+        "windtex: {} steps → PNGs ({}×{}, GFS {date}/{cyc:02}z) in {:.1?}",
+        fhours.len(),
+        gfs::TEX_WIDTH,
+        gfs::TEX_HEIGHT,
+        started.elapsed()
+    );
+    Ok(())
+}
+
 #[derive(Clone)]
 enum Sink {
     S3(s3::S3Writer),
@@ -463,8 +536,21 @@ enum Sink {
 }
 
 impl Sink {
+    /// Publish a JSON object (the common case: snapshots, indexes).
     async fn publish(&self, name: &str, body: &Value, max_age: u32) -> Result<()> {
-        let bytes = serde_json::to_vec(body)?;
+        self.publish_bytes(name, serde_json::to_vec(body)?, "application/json", max_age)
+            .await
+    }
+
+    /// Publish raw bytes with an explicit content type — JSON above, or the
+    /// windtex PNGs (image/png).
+    async fn publish_bytes(
+        &self,
+        name: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+        max_age: u32,
+    ) -> Result<()> {
         let len = bytes.len();
         match self {
             Sink::S3(writer) => {
@@ -473,7 +559,7 @@ impl Sink {
                     .put(
                         &key,
                         bytes,
-                        "application/json",
+                        content_type,
                         &format!("public, max-age={max_age}"),
                     )
                     .await?;
@@ -514,8 +600,12 @@ async fn run_job(job: &str, cfg: &Config, http: &reqwest::Client, sink: &Sink) -
         fetch_citytiles(http, sink).await?;
         done.push("citytile");
     }
+    if matches!(job, "windtex" | "all") {
+        fetch_windtex(http, sink).await?;
+        done.push("windtex");
+    }
     if done.is_empty() {
-        bail!("unknown job '{job}' (expected alerts | grid | global | citytile | all)");
+        bail!("unknown job '{job}' (expected alerts | grid | global | citytile | windtex | all)");
     }
     Ok(json!({ "ok": true, "jobs": done }))
 }

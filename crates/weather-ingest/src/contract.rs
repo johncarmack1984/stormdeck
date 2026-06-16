@@ -152,6 +152,36 @@ pub struct CityTileIndex {
     pub max_zoom: u8,
 }
 
+/// The `windtex/latest.json` pointer: the current snapshot, its forecast-hour
+/// axis, the equirectangular u/v texture dimensions, and the m/s bounds the PNG
+/// channels were normalized over (so the web denormalizes u/v identically). The
+/// per-step textures live at `windtex/{snapshotMs}/{hour}.png` (immutable);
+/// the web's particle layer loads whichever step the timeline is parked on.
+#[derive(Serialize)]
+#[cfg_attr(feature = "ts", derive(specta::Type))]
+pub struct WindTexIndex {
+    #[serde(rename = "snapshotMs")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub snapshot_ms: u64,
+    pub hours: Vec<u32>,
+    pub width: u32,
+    pub height: u32,
+    // Always-present reals; the `Number` override avoids the `number | null`
+    // that a bare f32 exports (same trick as CityForecast::t).
+    #[serde(rename = "uMin")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub u_min: f32,
+    #[serde(rename = "uMax")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub u_max: f32,
+    #[serde(rename = "vMin")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub v_min: f32,
+    #[serde(rename = "vMax")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub v_max: f32,
+}
+
 #[cfg(all(test, feature = "ts"))]
 mod export {
     use specta::Types;
@@ -166,7 +196,8 @@ mod export {
             .register::<super::AlertProps>()
             .register::<super::GridProps>()
             .register::<super::CityForecast>()
-            .register::<super::CityTileIndex>();
+            .register::<super::CityTileIndex>()
+            .register::<super::WindTexIndex>();
         Typescript::default()
             .header("// Generated from crates/weather-ingest/src/contract.rs by `just build types`. Do not edit.\n")
             .export_to(

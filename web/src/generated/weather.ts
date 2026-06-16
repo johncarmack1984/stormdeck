@@ -51,3 +51,21 @@ export type GridProps = {
 
 /**  NWS severity, normalized: anything unrecognized becomes `Unknown`. */
 export type Severity = 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
+
+/**
+ *  The `windtex/latest.json` pointer: the current snapshot, its forecast-hour
+ *  axis, the equirectangular u/v texture dimensions, and the m/s bounds the PNG
+ *  channels were normalized over (so the web denormalizes u/v identically). The
+ *  per-step textures live at `windtex/{snapshotMs}/{hour}.png` (immutable);
+ *  the web's particle layer loads whichever step the timeline is parked on.
+ */
+export type WindTexIndex = {
+  snapshotMs: number;
+  hours: number[];
+  width: number;
+  height: number;
+  uMin: number;
+  uMax: number;
+  vMin: number;
+  vMax: number;
+};
