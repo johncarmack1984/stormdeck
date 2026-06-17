@@ -108,6 +108,31 @@ After that, `deploy-web` republishes on any push that touches `web/`
 (an S3 sync plus an index invalidation — hashed assets are immutable),
 and `deploy-infra` redeploys on anything touching `cdk/` or `crates/`.
 
+## Development & releases
+
+Work on a branch and open a PR — `ci` runs on every PR (web build + biome,
+Rust fmt/clippy/contract-drift, cdk typecheck + synth). Merging to `main` is
+what ships: the same push triggers `deploy-web` / `deploy-infra` (continuous
+deployment, unchanged).
+
+Releases are markers on top of that — they tag a known-good point and write a
+changelog; they do **not** deploy. The deployed app stamps its own version
+(`git describe`, baked in at build) next to the title and in a console banner,
+so the live label reads `vX.Y.Z` on a release and `vX.Y.Z-N-g<sha>` for the N
+commits merged since — i.e. exactly what's live.
+
+```sh
+just release            # bump the patch tag (vX.Y.Z) and push it
+just release minor      # or minor / major
+just release 0.1.0      # or an exact version (use this for the first release)
+```
+
+`just release` only runs from a clean, pushed `main`. Pushing the tag fires
+`release.yml`, which cuts a GitHub Release with notes auto-generated from the
+PRs merged since the previous tag — so PR titles are the changelog (label them
+to sort into the sections in `.github/release.yml`). To roll back, revert via a
+PR and merge; CD redeploys.
+
 ## Local dev
 
 The quick way — `just web dev` runs the app against the **live site's** tiles +

@@ -1,0 +1,17 @@
+# How GitHub auto-generates release notes (used by release.yml's
+# `gh release create --generate-notes`). PRs are grouped by label; the `*`
+# catch-all means unlabeled PRs still appear, so notes are useful even with no
+# labelling discipline. Label PRs to sort them into the sections above it.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Features
+      labels: ['feature', 'enhancement']
+    - title: Fixes
+      labels: ['fix', 'bug']
+    - title: Infra & ops
+      labels: ['infra', 'ops', 'ci', 'dependencies']
+    - title: Other changes
+      labels: ['*']

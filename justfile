@@ -29,3 +29,11 @@ dev:
 check:
     cargo check --manifest-path crates/Cargo.toml
     cd web && pnpm run build
+
+# The pushed tag fires release.yml, which writes the GitHub Release notes from
+# the PRs merged since the last tag. Deploys are unaffected (they stay on
+# push-to-main); the app version label is git-derived, so there are no files to
+# bump. Run from a clean, pushed main.
+# Cut a release: bump + push a vX.Y.Z tag (patch|minor|major, or exact X.Y.Z).
+release level="patch":
+    scripts/release.sh {{ level }}
