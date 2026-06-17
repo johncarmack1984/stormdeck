@@ -3,8 +3,8 @@ name: auto-release
 # Every merge to main cuts a patch release automatically: bump the latest v*
 # tag (scripts/next-version.sh), tag the merge commit, and create the GitHub
 # Release with notes from the PRs merged since the last tag. The first run with
-# no tags yet seeds v0.1.0. This does NOT deploy — deploy-web / deploy-infra
-# stay on push-to-main and bake the same version into the live label.
+# no tags yet seeds v0.1.0. This does NOT deploy — the deploy workflow stays
+# on push-to-main and bakes the same version into the live label.
 #
 # For a minor/major bump, run `just release minor|major` by hand (its
 # user-pushed tag fires release.yml, the manual path). To skip a release for a

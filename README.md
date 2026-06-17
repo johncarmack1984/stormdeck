@@ -70,26 +70,26 @@ just profile=<admin> cdk bootstrap
 just profile=<admin> cdk deploy oidc
 gh variable set AWS_DEPLOY_ROLE_ARN \
   --body "$(just profile=<admin> cdk output DeployRoleArn StormdeckGithubOidc)"
-git push    # deploy-infra applies the stack (or locally: just cdk deploy)
+git push    # the deploy workflow applies the stack (or locally: just cdk deploy)
 
 # 4. ship the tiles, prime the weather data
 just tiles upload
 just weather prime
 
-# 5. tell deploy-web which distribution to invalidate, then publish
+# 5. tell deploy which distribution to invalidate, then publish
 gh variable set DISTRIBUTION_ID --body "$(just cdk output DistributionId)"
-gh workflow run deploy-web.yml
+gh workflow run deploy.yml
 ```
 
-After that, `deploy-web` republishes on any push that touches `web/` (an S3 sync plus an index invalidation — hashed assets are immutable), and `deploy-infra` redeploys on anything touching `cdk/` or `crates/`.
+After that, the single `deploy` workflow republishes on any push to `main`: a change under `cdk/` or `crates/` redeploys the stack and re-primes the weather feeds, and a change under `web/` publishes the app (an S3 sync plus an index invalidation — hashed assets are immutable). When a merge touches both, the web job waits for the infra job, so the app never goes live ahead of the backend (and data) it reads.
 
 ## Development & releases
 
-Work on a branch and open a PR — `ci` runs on every PR (web build + biome, Rust fmt/clippy/contract-drift, cdk typecheck + synth). Merging to `main` is what ships: the same push triggers `deploy-web` / `deploy-infra` (continuous deployment).
+Work on a branch and open a PR — `ci` runs on every PR (web build + biome, Rust fmt/clippy/contract-drift, cdk typecheck + synth). Merging to `main` is what ships: the push triggers the `deploy` workflow (continuous deployment) — infra first (stack deploy + feed priming), then the web, so the app never publishes ahead of its backend.
 
 Docs ship with the change: any PR that alters data sources, behavior, costs, or architecture updates the README and the on-map attribution (`web/src/App.tsx` and `web/src/basemap.ts`) in the same PR. `ci` can't catch stale prose, so [the PR checklist](.github/pull_request_template.md) is the backstop — keep a source uncredited and you've shipped a licensing bug, not just a doc gap.
 
-Every merge also cuts a **patch release automatically** (`auto-release.yml`): it bumps the latest `vX.Y.Z` tag, tags the merge commit, and creates a GitHub Release with notes auto-generated from the PRs merged since the last tag — so PR titles are the changelog (label them to sort into the sections in `.github/release.yml`). The first merge with no tags yet seeds `v0.1.0`. The deployed app stamps that same version next to the title and in a console banner (`deploy-web` computes it the same way), so the live label always reads the released `vX.Y.Z` — exactly what's live.
+Every merge also cuts a **patch release automatically** (`auto-release.yml`): it bumps the latest `vX.Y.Z` tag, tags the merge commit, and creates a GitHub Release with notes auto-generated from the PRs merged since the last tag — so PR titles are the changelog (label them to sort into the sections in `.github/release.yml`). The first merge with no tags yet seeds `v0.1.0`. The deployed app stamps that same version next to the title and in a console banner (the `deploy` workflow computes it the same way), so the live label always reads the released `vX.Y.Z` — exactly what's live.
 
 For a bigger bump, or to release by hand, use `just release` from a clean, pushed `main`:
 

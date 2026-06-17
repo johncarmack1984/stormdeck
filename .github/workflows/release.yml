@@ -3,7 +3,7 @@ name: release
 # A pushed vX.Y.Z tag (via `just release`) cuts a GitHub Release with notes
 # auto-generated from the PRs merged since the previous tag — which is why the
 # branch/PR workflow matters: PR titles become the changelog. This does NOT
-# deploy; deploys stay on push-to-main (deploy-web / deploy-infra). The tag is
+# deploy; deploys stay on push-to-main (the deploy workflow). The tag is
 # a marker + notes, and the live app stamps its git-derived version itself.
 on:
   push:

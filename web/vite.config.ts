@@ -8,7 +8,8 @@ import tailwindcss from '@tailwindcss/vite';
  * when the build is N commits past it (so the live label is commit-exact
  * between releases) and `-dirty` for an uncommitted local build. Falls back
  * to the short SHA before the first tag, or VITE_APP_VERSION / 'dev' when git
- * is unavailable. CI must fetch tags (deploy-web uses fetch-depth: 0). */
+ * is unavailable. CI must fetch tags (the deploy workflow's web job uses
+ * fetch-depth: 0). */
 function appVersion(): string {
   if (process.env.VITE_APP_VERSION) return process.env.VITE_APP_VERSION;
   try {

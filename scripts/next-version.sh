@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Print the next release version (vX.Y.Z) for a bump level, from the latest v*
 # tag. No side effects — it only reads tags and prints. Shared by `just release`
-# (scripts/release.sh), auto-release.yml, and deploy-web.yml so all three agree
+# (scripts/release.sh), auto-release.yml, and deploy.yml so all three agree
 # on the version (the deploy bakes the same number auto-release tags, keeping
 # the live label clean). Needs tags fetched (workflows use fetch-depth: 0).
 #
