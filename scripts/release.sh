@@ -29,28 +29,9 @@ git fetch --quiet --tags origin main
   exit 1
 }
 
-# --- compute the next version ----------------------------------------------
+# --- compute the next version (shared with the workflows) -------------------
 prev=$(git tag --list 'v*' --sort=-v:refname | head -n1)
-prev="${prev:-v0.0.0}"
-read -r major minor patch <<<"$(echo "${prev#v}" | tr '.' ' ')"
-
-case "$arg" in
-  major) next="v$((major + 1)).0.0" ;;
-  minor) next="v${major}.$((minor + 1)).0" ;;
-  patch) next="v${major}.${minor}.$((patch + 1))" ;;
-  v*.*.* | [0-9]*.*.*)
-    candidate="v${arg#v}"
-    echo "$candidate" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || {
-      echo "error: '$arg' is not a valid X.Y.Z version." >&2
-      exit 1
-    }
-    next="$candidate"
-    ;;
-  *)
-    echo "error: expected patch|minor|major or an X.Y.Z version, got '$arg'." >&2
-    exit 1
-    ;;
-esac
+next="$(scripts/next-version.sh "$arg")"
 
 git rev-parse -q --verify "refs/tags/$next" >/dev/null && {
   echo "error: tag $next already exists." >&2
@@ -58,7 +39,7 @@ git rev-parse -q --verify "refs/tags/$next" >/dev/null && {
 }
 
 # --- tag + push (release.yml takes it from here) ---------------------------
-echo "Releasing $prev -> $next ($(git rev-parse --short HEAD))"
+echo "Releasing ${prev:-none} -> $next ($(git rev-parse --short HEAD))"
 git tag -a "$next" -m "Release $next"
 git push origin "$next"
 
