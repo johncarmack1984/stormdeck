@@ -89,6 +89,20 @@ export class GithubOidcStack extends Stack {
       }),
     );
 
+    // The deploy workflow primes the weather feeds right after `cdk deploy`, so
+    // a brand-new feed exists before the web that reads it publishes. The
+    // function name is fixed (set in stormdeck-stack.ts); us-east-2 matches the
+    // region every infra recipe pins.
+    role.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'PrimeWeatherFeeds',
+        actions: ['lambda:InvokeFunction'],
+        resources: [
+          `arn:aws:lambda:us-east-2:${this.account}:function:stormdeck-weather-ingest`,
+        ],
+      }),
+    );
+
     new CfnOutput(this, 'DeployRoleArn', {
       value: role.roleArn,
       description: 'Set as the AWS_DEPLOY_ROLE_ARN repo variable',

@@ -1,0 +1,198 @@
+name: deploy
+
+# One ordered pipeline so the web never goes live ahead of its backend. A merge
+# touching both web/ and infra fires both halves, but the `web` job `needs` the
+# `infra` job — the new app publishes only after the new lambda is deployed AND
+# its data feeds are primed (a brand-new feed otherwise 404s until the schedule
+# first fires). Web-only and infra-only merges skip the half they don't need
+# (path filter), keeping the old fast single-sided deploys.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'cdk/**'
+      - 'crates/**'
+      - 'scripts/build-martin-lambda.sh'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# Union of what the two halves need: OIDC for AWS, contents for checkout,
+# deployments to record the production publish.
+permissions:
+  id-token: write
+  contents: read
+  deployments: write
+
+# Serialize every deploy (both halves share the group) so two quick merges can't
+# interleave a later infra deploy with an earlier web publish.
+concurrency: deploy
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'web/**'
+              - '.github/workflows/deploy.yml'
+            infra:
+              - 'cdk/**'
+              - 'crates/**'
+              - 'scripts/build-martin-lambda.sh'
+              - '.github/workflows/deploy.yml'
+
+  # Backend first: deploy the stack, then prime the data feeds the (new) web
+  # expects so they exist before it publishes.
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    # No AWS keys: assumes stormdeck-github-deploy via OIDC (trust-scoped to
+    # main on this repo). cdk uses the admin bootstrap cfn-exec role.
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      # weather-ingest is compiled by cargo-lambda-cdk during cdk deploy (synth),
+      # using the cargo-lambda + toolchain above; only the prebuilt martin binary
+      # needs packaging ahead of time.
+      - name: Build martin lambda zip
+        run: scripts/build-martin-lambda.sh build/martin-lambda.zip
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: cdk/pnpm-lock.yaml
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: cdk deploy
+        working-directory: cdk
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec cdk deploy StormdeckStack --require-approval never
+
+      # Populate the data feeds the web reads BEFORE it publishes — a brand-new
+      # feed (e.g. lattice.json) otherwise 404s until the 6 h schedule first
+      # fires. Each job is invoked synchronously (its own full 600 s budget) and
+      # in parallel; a FunctionError fails this job, which gates the web job.
+      # Needs lambda:InvokeFunction on the deploy role (github-oidc-stack.ts).
+      - name: Prime weather feeds
+        run: |
+          set -uo pipefail
+          prime() {
+            local job=$1
+            local out="/tmp/prime-$job.json"
+            aws lambda invoke --function-name stormdeck-weather-ingest --region us-east-2 \
+              --payload "{\"job\":\"$job\"}" --cli-binary-format raw-in-base64-out \
+              --cli-read-timeout 0 "$out" >/dev/null || { echo "::error::invoke $job failed"; return 1; }
+            if grep -q '"errorMessage"' "$out"; then
+              echo "::error::prime $job returned a FunctionError:"; cat "$out"; return 1
+            fi
+            echo "primed $job: $(cat "$out")"
+          }
+          pids=()
+          for job in alerts temp windtex; do prime "$job" & pids+=($!); done
+          fail=0
+          for pid in "${pids[@]}"; do wait "$pid" || fail=1; done
+          [ "$fail" -eq 0 ] || { echo "one or more prime jobs failed"; exit 1; }
+
+  # Web second: publish only after infra succeeds (or was skipped, for a
+  # web-only merge). `always()` lets this evaluate past a skipped infra; the
+  # result guard keeps a failed/cancelled infra from shipping a web that depends
+  # on it.
+  web:
+    needs: [changes, infra]
+    if: >-
+      always() &&
+      needs.changes.outputs.web == 'true' &&
+      needs.infra.result != 'failure' &&
+      needs.infra.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      # Full history + tags so the version stamp resolves (next step).
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # Bake in the version this commit ships as: its exact tag if it has one,
+      # else the patch auto-release is creating for this same merge — the same
+      # number, computed the same way, so the live label matches the Release.
+      - name: Resolve app version
+        run: |
+          v=$(git describe --tags --exact-match HEAD 2>/dev/null || scripts/next-version.sh patch)
+          echo "VITE_APP_VERSION=$v" >>"$GITHUB_ENV"
+          echo "version: $v"
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm run build
+        working-directory: web
+        env:
+          # API_BASE resolves to '' in production builds (web/src/config.ts) —
+          # same origin as the tiles and weather feeds, so all fetches relative.
+          BASE_PATH: /
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+      - name: Sync site to S3
+        run: |
+          BUCKET="stormdeck-$(aws sts get-caller-identity --query Account --output text)"
+          # Hashed assets are immutable; index.html must always revalidate.
+          aws s3 sync web/dist "s3://$BUCKET/site" --delete \
+            --exclude index.html \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp web/dist/index.html "s3://$BUCKET/site/index.html" \
+            --cache-control "no-cache"
+      - name: Invalidate index
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.DISTRIBUTION_ID }} \
+            --paths "/" "/index.html"
+      # Record the publish as a GitHub Deployment to `production` so the repo's
+      # Deployments view tracks what's live. Done via the API, NOT a job-level
+      # `environment:` — that key rewrites the OIDC subject to
+      # repo:…:environment:production, which the deploy role's trust (pinned to
+      # the main ref) rejects, breaking the AWS role assumption above.
+      - name: Record production deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body=$(jq -nc --arg ref "$GITHUB_SHA" --arg desc "${VITE_APP_VERSION:-}" \
+            '{ref:$ref, environment:"production", production_environment:true, auto_merge:false, required_contexts:[], description:$desc}')
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/deployments" --input - <<<"$body" --jq '.id')
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state=success \
+            -f environment=production \
+            -f environment_url=https://stormdeck.live \
+            -f description="Published ${VITE_APP_VERSION:-} to production" >/dev/null
+          echo "Recorded production deployment $id ($VITE_APP_VERSION)"
