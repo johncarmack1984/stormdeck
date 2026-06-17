@@ -11,19 +11,13 @@ on:
 permissions:
   id-token: write
   contents: read
+  deployments: write
 
 concurrency: deploy-web
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Record each publish as a GitHub Deployment to `production`, so the repo's
-    # Deployments view tracks what's actually live (with the link) instead of
-    # the retired github-pages records. No protection rules — this only logs
-    # the deploy, it doesn't gate it.
-    environment:
-      name: production
-      url: https://stormdeck.live
     steps:
       # Full history + tags so the version stamp resolves (see next step).
       - uses: actions/checkout@v6
@@ -72,3 +66,22 @@ jobs:
           aws cloudfront create-invalidation \
             --distribution-id ${{ vars.DISTRIBUTION_ID }} \
             --paths "/" "/index.html"
+      # Record the publish as a GitHub Deployment to `production` so the repo's
+      # Deployments view tracks what's live (with the link). Done via the API,
+      # NOT a job-level `environment:` — that key rewrites the OIDC subject to
+      # repo:…:environment:production, which the deploy role's trust (pinned to
+      # the main ref) rejects, breaking the AWS role assumption above.
+      - name: Record production deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body=$(jq -nc --arg ref "$GITHUB_SHA" --arg desc "${VITE_APP_VERSION:-}" \
+            '{ref:$ref, environment:"production", production_environment:true, auto_merge:false, required_contexts:[], description:$desc}')
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/deployments" --input - <<<"$body" --jq '.id')
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state=success \
+            -f environment=production \
+            -f environment_url=https://stormdeck.live \
+            -f description="Published ${VITE_APP_VERSION:-} to production" >/dev/null
+          echo "Recorded production deployment $id ($VITE_APP_VERSION)"
