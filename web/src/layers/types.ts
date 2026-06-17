@@ -5,13 +5,11 @@ import type { WeatherData } from '../weather';
 /**
  * Per-render context handed to a layer's `build`/`controls`.
  *
- * `zoom`/`region` are the shared, view-derived state; `ui` is the layer's own
- * slice of UI state (e.g. `{ opacity }`) and `setUi` patches it.
+ * `zoom` is the shared, view-derived state; `ui` is the layer's own slice of UI
+ * state (e.g. `{ opacity }`) and `setUi` patches it.
  */
 export interface LayerCtx {
   zoom: number;
-  /** True near the ground (fine grid); false far out (global lattice). */
-  region: boolean;
   /** Map-wide forecast time as an hour offset from the citytile snapshot.
    * Time-aware layers filter their data to it (via DataFilterExtension). */
   time: number;

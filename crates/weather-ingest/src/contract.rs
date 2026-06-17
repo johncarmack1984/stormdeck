@@ -78,23 +78,20 @@ pub struct AlertProps {
     pub expires: Option<String>,
 }
 
-/// Open-Meteo current conditions at one grid point.
+/// One global-lattice point's temperature series (°F), aligned
+/// element-for-element with the enclosing tile's `hours` axis — the
+/// zoomed-out, nameless analog of [`CityForecast`]. `i`/`j` are the lattice
+/// column/row, so the web can thin the grid at low zoom without re-deriving
+/// the layout.
 #[derive(Serialize)]
 #[cfg_attr(feature = "ts", derive(specta::Type))]
-pub struct GridProps {
-    #[serde(rename = "tempF")]
-    pub temp_f: Option<f64>,
-    pub rh: Option<f64>,
-    #[serde(rename = "windMph")]
-    pub wind_mph: Option<f64>,
-    #[serde(rename = "windDir")]
-    pub wind_dir: Option<f64>,
-    pub code: Option<f64>,
-    /// Lattice column/row; null off the global grid. Always emitted —
-    /// conditional omission would split the exported type into
-    /// serialize/deserialize phases for no consumer benefit.
-    pub i: Option<u32>,
-    pub j: Option<u32>,
+pub struct LatticeForecast {
+    // Always-present reals; override the `number | null` that bare f64 exports
+    // (same trick as CityForecast::t).
+    #[cfg_attr(feature = "ts", specta(type = Vec<specta_typescript::Number>))]
+    pub t: Vec<f64>,
+    pub i: u32,
+    pub j: u32,
 }
 
 /// One city's point forecast: its name and a temperature series (°F) aligned
@@ -191,10 +188,10 @@ mod export {
     #[test]
     fn export_bindings() {
         // Domain payloads → weather.ts. Registering AlertProps pulls in
-        // Severity; GridProps stands alone.
+        // Severity; LatticeForecast stands alone.
         let weather = Types::default()
             .register::<super::AlertProps>()
-            .register::<super::GridProps>()
+            .register::<super::LatticeForecast>()
             .register::<super::CityForecast>()
             .register::<super::CityTileIndex>()
             .register::<super::WindTexIndex>();
@@ -227,26 +224,27 @@ mod export {
 
 #[cfg(test)]
 mod tests {
-    use super::{GridProps, Snapshot};
+    use super::{AlertProps, Severity, Snapshot};
     use typed_geojson::{Feature, Point};
 
     /// The flattened envelope must serialize as a valid GeoJSON
     /// `FeatureCollection` with `generated_ms` riding alongside `features` —
-    /// the exact wire shape the web app reads.
+    /// the exact wire shape the web app reads. `Snapshot` now carries only
+    /// alerts, so the round-trip is exercised through `AlertProps`.
     #[test]
     fn snapshot_serializes_as_a_feature_collection() {
         let snap = Snapshot::new(
             1_700_000_000_000,
             vec![Feature::new(
                 Point::new(vec![-96.8, 32.8]),
-                GridProps {
-                    temp_f: Some(70.0),
-                    rh: None,
-                    wind_mph: None,
-                    wind_dir: None,
-                    code: None,
-                    i: None,
-                    j: None,
+                AlertProps {
+                    id: "urn:oid:2.49.0.1.840.0.test".to_owned(),
+                    event: "Tornado Warning".to_owned(),
+                    severity: Severity::Extreme,
+                    headline: None,
+                    area_desc: Some("Dallas, TX".to_owned()),
+                    onset: None,
+                    expires: None,
                 },
             )],
         );
@@ -260,7 +258,8 @@ mod tests {
             f["geometry"]["coordinates"],
             serde_json::json!([-96.8, 32.8])
         );
-        // GridProps' serde rename survives.
-        assert_eq!(f["properties"]["tempF"], 70.0);
+        // AlertProps' serde rename (`area_desc` → `areaDesc`) survives the flatten.
+        assert_eq!(f["properties"]["areaDesc"], "Dallas, TX");
+        assert_eq!(f["properties"]["event"], "Tornado Warning");
     }
 }

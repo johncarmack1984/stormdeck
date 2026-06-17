@@ -33,20 +33,17 @@ export type CityTileIndex = {
   maxZoom: number;
 };
 
-/**  Open-Meteo current conditions at one grid point. */
-export type GridProps = {
-  tempF: number | null;
-  rh: number | null;
-  windMph: number | null;
-  windDir: number | null;
-  code: number | null;
-  /**
-   *  Lattice column/row; null off the global grid. Always emitted —
-   *  conditional omission would split the exported type into
-   *  serialize/deserialize phases for no consumer benefit.
-   */
-  i: number | null;
-  j: number | null;
+/**
+ *  One global-lattice point's temperature series (°F), aligned
+ *  element-for-element with the enclosing tile's `hours` axis — the
+ *  zoomed-out, nameless analog of [`CityForecast`]. `i`/`j` are the lattice
+ *  column/row, so the web can thin the grid at low zoom without re-deriving
+ *  the layout.
+ */
+export type LatticeForecast = {
+  t: number[];
+  i: number;
+  j: number;
 };
 
 /**  NWS severity, normalized: anything unrecognized becomes `Unknown`. */
