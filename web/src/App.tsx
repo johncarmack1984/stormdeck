@@ -45,7 +45,7 @@ const seedUi = (): UiState =>
 
 export default function App() {
   const [zoom, setZoom] = useState(INITIAL_VIEW.zoom);
-  const data = useWeatherData(zoom);
+  const data = useWeatherData();
   const [visible, setVisible] = useState(loadVisible);
   const [ui, setUi] = useState<UiState>(seedUi);
   const [timeState, setTimeState] = useState<number | null>(null);
@@ -79,7 +79,6 @@ export default function App() {
 
   const ctxFor = (id: string): LayerCtx => ({
     zoom,
-    region: data.region,
     time,
     ui: ui[id] ?? {},
     setUi: (patch) => setUi((u) => ({ ...u, [id]: { ...u[id], ...patch } })),
@@ -117,7 +116,7 @@ export default function App() {
         attributionControl={{
           compact: false,
           customAttribution:
-            'Radar: <a href="https://www.rainviewer.com/">RainViewer</a> / NOAA · Alerts: <a href="https://www.weather.gov/">NWS</a> · Conditions: <a href="https://open-meteo.com/">Open-Meteo</a> · Wind: <a href="https://registry.opendata.aws/noaa-gfs-bdp-pds/">NOAA GFS</a> · Cities: <a href="https://www.geonames.org/">GeoNames</a>',
+            'Radar: <a href="https://www.rainviewer.com/">RainViewer</a> / NOAA · Alerts: <a href="https://www.weather.gov/">NWS</a> · Temps &amp; wind: <a href="https://registry.opendata.aws/noaa-gfs-bdp-pds/">NOAA GFS</a> · Cities: <a href="https://www.geonames.org/">GeoNames</a>',
         }}
       >
         <DeckOverlay layers={layers} getTooltip={getTooltip} />

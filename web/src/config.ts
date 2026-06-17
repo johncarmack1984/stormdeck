@@ -15,8 +15,8 @@ export const WEATHER_BASE: string =
 /** Whole-world start; a URL hash (shareable view) overrides this. */
 export const INITIAL_VIEW = { longitude: -97.0, latitude: 32.8, zoom: 0 };
 
-/** Below this zoom the coarse global conditions lattice renders; at or
- * above it, the fine regional grid takes over. */
+/** The temperature layer's grid↔city switch: below this zoom the whole-planet
+ * GFS lattice renders; at or above it, the per-city tiles take over. */
 export const GRID_ZOOM_SPLIT = 6.5;
 
 /** A radar tile template plus the deepest zoom the server actually renders;

@@ -24,7 +24,6 @@ import { Construct } from 'constructs';
 // Knobs.
 const PROJECT = 'stormdeck';
 const NWS_AREA = ''; // state/territory code; empty = every US alert
-const BBOX = '-98.2,31.8,-95.8,33.6'; // match the tile extract (DFW)
 const CONTACT = 'github.com/johncarmack1984/stormdeck';
 const TILES_KEY = 'pmtiles/region.pmtiles';
 const WORLD_KEY = 'pmtiles/world.pmtiles';
@@ -101,16 +100,15 @@ export class StormdeckStack extends Stack {
       manifestPath: CRATES_MANIFEST,
       binaryName: 'weather-ingest',
       architecture: lambda.Architecture.ARM_64,
-      // citytile + windtex decode GFS GRIB fields (~4 MB grids, several in
-      // flight; windtex also holds a u/v pair while its PNG encodes); the
-      // other jobs are lighter.
+      // temp + windtex decode GFS GRIB fields (~4 MB grids, several in flight;
+      // windtex also holds a u/v pair while its PNG encodes); alerts is lighter.
       memorySize: 512,
-      // The global job paces ~12 Open-Meteo batches 15s apart (+ 429 backoff).
+      // temp samples ~57 GFS TMP fields (cities + lattice); windtex decodes u/v
+      // pairs into PNGs — both well within 600s.
       timeout: Duration.seconds(600),
       environment: {
         BUCKET: bucket.bucketName,
         NWS_AREA,
-        BBOX,
         CONTACT,
         RUST_LOG: 'info',
       },
@@ -294,15 +292,13 @@ export class StormdeckStack extends Stack {
         '_9fa95b9ad4ef666e498d1b9de17ba1f8.jkddzztszm.acm-validations.aws.',
     });
 
-    // EventBridge Scheduler triggers (14M invocations/month free tier). The
-    // Open-Meteo jobs (grid/global) count each lattice point as one API call,
-    // staying under the 10k/day non-commercial tier; citytile is free GFS GRIB
-    // from NODD (no per-call limit), refreshed once per cycle window.
+    // EventBridge Scheduler triggers (14M invocations/month free tier). Every
+    // weather job is free GFS GRIB from NODD (no per-call limit) plus the public
+    // NWS alerts feed, so the cadence is bounded by freshness, not API quotas;
+    // temp + windtex refresh once per GFS cycle window.
     const jobs: Array<[string, Duration]> = [
       ['alerts', Duration.minutes(5)],
-      ['grid', Duration.minutes(30)],
-      ['global', Duration.hours(6)],
-      ['citytile', Duration.hours(6)],
+      ['temp', Duration.hours(6)],
       ['windtex', Duration.hours(6)],
     ];
     for (const [job, every] of jobs) {

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { RadarSource } from './config';
 import {
-  GRID_ZOOM_SPLIT,
   RADAR_FALLBACK,
   RAINVIEWER_API,
   RAINVIEWER_MAX_NATIVE_ZOOM,
@@ -11,7 +10,7 @@ import type { FeatureCollection, Geometry, Point } from './generated/geojson';
 import type {
   AlertProps,
   CityTileIndex,
-  GridProps,
+  LatticeForecast,
   WindTexIndex,
 } from './generated/weather';
 
@@ -25,6 +24,15 @@ import type {
  * payloads stay mutually assignable with `@types/geojson`. */
 export type WeatherFc<G, P> = FeatureCollection<G, P> & {
   generated_ms: number;
+};
+
+/** The whole-planet temperature lattice JSON: a FeatureCollection of
+ * GFS-sampled points, each carrying a temperature series, plus the shared
+ * snapshot + hour axis it was sampled on — the same envelope as a city tile,
+ * but global and untiled. */
+export type LatticeFc = FeatureCollection<Point, LatticeForecast> & {
+  snapshotMs: number;
+  hours: number[];
 };
 
 /** Human "N min ago" for a feed's `generated_ms` (or model snapshot) time. */
@@ -60,10 +68,8 @@ function useFeed<T>(path: string, intervalMs: number): T | null {
 
 export const useAlerts = () =>
   useFeed<WeatherFc<Geometry, AlertProps>>('alerts.json', 60_000);
-export const useGrid = () =>
-  useFeed<WeatherFc<Point, GridProps>>('grid.json', 300_000);
-export const useGlobalGrid = () =>
-  useFeed<WeatherFc<Point, GridProps>>('global.json', 600_000);
+/** The whole-planet temperature lattice (the zoomed-out grid). */
+export const useLattice = () => useFeed<LatticeFc>('lattice.json', 600_000);
 
 /** The point-forecast tile index (snapshot + hours). The citytile layer's
  * TileLayer fetches the actual per-tile JSON on demand. */
@@ -111,42 +117,26 @@ export function useRadarTiles(): RadarSource {
   return source;
 }
 
-/** Everything the map's layers draw from, in one place. The region/global
- * grid split lives here so a layer just reads `activeGrid`. */
+/** Everything the map's layers draw from, in one place. */
 export interface WeatherData {
   alerts: WeatherFc<Geometry, AlertProps> | null;
   radar: RadarSource;
-  /** Fine bbox grid (regional). */
-  grid: WeatherFc<Point, GridProps> | null;
-  /** Coarse planet lattice. */
-  globalGrid: WeatherFc<Point, GridProps> | null;
-  /** Whichever grid is live at the current zoom. */
-  activeGrid: WeatherFc<Point, GridProps> | null;
+  /** Whole-planet temperature lattice (the zoomed-out grid). */
+  lattice: LatticeFc | null;
   /** Point-forecast tile index (cities + the forecast time axis). */
   cityTiles: CityTileIndex | null;
   /** Wind u/v texture index (snapshot + forecast hours + m/s bounds). */
   windTex: WindTexIndex | null;
-  /** True near the ground (fine grid); false far out (global lattice). */
-  region: boolean;
 }
 
-/** One hook, all feeds — keeps the layer registry itself hook-free. */
-export function useWeatherData(zoom: number): WeatherData {
+/** One hook, all feeds — keeps the layer registry itself hook-free. The
+ * temperature layer picks lattice vs. city tiles from `ctx.zoom` itself, so
+ * this hook no longer needs the zoom. */
+export function useWeatherData(): WeatherData {
   const alerts = useAlerts();
-  const grid = useGrid();
-  const globalGrid = useGlobalGrid();
+  const lattice = useLattice();
   const radar = useRadarTiles();
   const cityTiles = useCityTiles();
   const windTex = useWindTex();
-  const region = zoom >= GRID_ZOOM_SPLIT;
-  return {
-    alerts,
-    radar,
-    grid,
-    globalGrid,
-    activeGrid: region ? grid : globalGrid,
-    cityTiles,
-    windTex,
-    region,
-  };
+  return { alerts, radar, lattice, cityTiles, windTex };
 }
