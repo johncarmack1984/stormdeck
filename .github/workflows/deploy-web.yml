@@ -17,6 +17,13 @@ concurrency: deploy-web
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Record each publish as a GitHub Deployment to `production`, so the repo's
+    # Deployments view tracks what's actually live (with the link) instead of
+    # the retired github-pages records. No protection rules — this only logs
+    # the deploy, it doesn't gate it.
+    environment:
+      name: production
+      url: https://stormdeck.live
     steps:
       # Full history + tags so the version stamp resolves (see next step).
       - uses: actions/checkout@v6
