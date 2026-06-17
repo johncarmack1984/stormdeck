@@ -18,11 +18,19 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # Full history + tags so the build's `git describe` resolves the
-      # release version stamped into the app (vite.config.ts appVersion()).
+      # Full history + tags so the version stamp resolves (see next step).
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      # Bake in the version this commit ships as: its exact tag if it has one,
+      # else the patch that auto-release is creating for this same merge — the
+      # same number, computed the same way, so the live label is clean and
+      # matches the Release (no off-by-one between the deploy and the tag).
+      - name: Resolve app version
+        run: |
+          v=$(git describe --tags --exact-match HEAD 2>/dev/null || scripts/next-version.sh patch)
+          echo "VITE_APP_VERSION=$v" >>"$GITHUB_ENV"
+          echo "version: $v"
       - uses: pnpm/action-setup@v6
         with:
           version: 10

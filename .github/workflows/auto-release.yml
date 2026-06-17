@@ -1,0 +1,57 @@
+name: auto-release
+
+# Every merge to main cuts a patch release automatically: bump the latest v*
+# tag (scripts/next-version.sh), tag the merge commit, and create the GitHub
+# Release with notes from the PRs merged since the last tag. The first run with
+# no tags yet seeds v0.1.0. This does NOT deploy — deploy-web / deploy-infra
+# stay on push-to-main and bake the same version into the live label.
+#
+# For a minor/major bump, run `just release minor|major` by hand (its
+# user-pushed tag fires release.yml, the manual path). To skip a release for a
+# trivial merge, put [skip release] in the squash-merge message.
+on:
+  push:
+    branches: [main]
+
+# Tag the commit + create the Release.
+permissions:
+  contents: write
+
+# Serialize so two quick merges can't race to claim the same next tag.
+concurrency: auto-release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Tag + release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if git log -1 --pretty=%B | grep -qiE '\[skip[ -]release\]'; then
+            echo "[skip release] in the commit message — no release cut."
+            exit 0
+          fi
+          # Idempotent: if this commit is already tagged (re-run, or a manual
+          # release just landed), there's nothing to cut.
+          if existing=$(git describe --tags --exact-match HEAD 2>/dev/null); then
+            echo "HEAD is already released as $existing — nothing to do."
+            exit 0
+          fi
+
+          next="$(scripts/next-version.sh patch)"
+          echo "Releasing $next ($(git rev-parse --short HEAD))"
+
+          # The runner has no git identity; annotated tags need one.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" -m "Release $next"
+          # Pushed with GITHUB_TOKEN, so this tag does NOT trigger release.yml
+          # (that's the manual path) — we cut the Release in-job below instead.
+          git push origin "$next"
+          gh release create "$next" --verify-tag --generate-notes

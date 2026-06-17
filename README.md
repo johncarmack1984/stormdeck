@@ -113,25 +113,29 @@ and `deploy-infra` redeploys on anything touching `cdk/` or `crates/`.
 Work on a branch and open a PR — `ci` runs on every PR (web build + biome,
 Rust fmt/clippy/contract-drift, cdk typecheck + synth). Merging to `main` is
 what ships: the same push triggers `deploy-web` / `deploy-infra` (continuous
-deployment, unchanged).
+deployment).
 
-Releases are markers on top of that — they tag a known-good point and write a
-changelog; they do **not** deploy. The deployed app stamps its own version
-(`git describe`, baked in at build) next to the title and in a console banner,
-so the live label reads `vX.Y.Z` on a release and `vX.Y.Z-N-g<sha>` for the N
-commits merged since — i.e. exactly what's live.
+Every merge also cuts a **patch release automatically** (`auto-release.yml`):
+it bumps the latest `vX.Y.Z` tag, tags the merge commit, and creates a GitHub
+Release with notes auto-generated from the PRs merged since the last tag — so
+PR titles are the changelog (label them to sort into the sections in
+`.github/release.yml`). The first merge with no tags yet seeds `v0.1.0`. The
+deployed app stamps that same version next to the title and in a console
+banner (`deploy-web` computes it the same way), so the live label always reads
+the released `vX.Y.Z` — exactly what's live.
+
+For a bigger bump, or to release by hand, use `just release` from a clean,
+pushed `main`:
 
 ```sh
-just release            # bump the patch tag (vX.Y.Z) and push it
-just release minor      # or minor / major
-just release 0.1.0      # or an exact version (use this for the first release)
+just release minor      # or major — bump + push the tag yourself
+just release 0.1.0      # an exact version
 ```
 
-`just release` only runs from a clean, pushed `main`. Pushing the tag fires
-`release.yml`, which cuts a GitHub Release with notes auto-generated from the
-PRs merged since the previous tag — so PR titles are the changelog (label them
-to sort into the sections in `.github/release.yml`). To roll back, revert via a
-PR and merge; CD redeploys.
+A manual tag is pushed with your own credentials, so it fires `release.yml`
+(the manual path) instead of `auto-release`. To skip the release for a trivial
+merge, put `[skip release]` in the squash-merge message. To roll back, revert
+via a PR and merge — CD redeploys and the next patch is cut.
 
 ## Local dev
 
