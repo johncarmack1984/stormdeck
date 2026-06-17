@@ -20,8 +20,23 @@ function DeckOverlay(props: MapboxOverlayProps) {
 }
 
 type UiState = Record<string, Record<string, number>>;
+const VISIBLE_KEY = 'stormdeck:visible';
 const seedVisible = (): Record<string, boolean> =>
   Object.fromEntries(LAYERS.map((l) => [l.id, l.defaultVisible]));
+/** Visibility seeded from each layer's default, then overlaid with any saved
+ * choices — unknown/legacy ids are ignored, so a new layer keeps its default. */
+function loadVisible(): Record<string, boolean> {
+  const v = seedVisible();
+  try {
+    const saved = JSON.parse(localStorage.getItem(VISIBLE_KEY) ?? '{}');
+    for (const l of LAYERS) {
+      if (typeof saved[l.id] === 'boolean') v[l.id] = saved[l.id];
+    }
+  } catch {
+    // malformed or unavailable storage — fall back to defaults
+  }
+  return v;
+}
 const seedUi = (): UiState =>
   Object.fromEntries(
     LAYERS.filter((l) => l.initialUi).map((l) => [l.id, { ...l.initialUi }]),
@@ -30,12 +45,21 @@ const seedUi = (): UiState =>
 export default function App() {
   const [zoom, setZoom] = useState(INITIAL_VIEW.zoom);
   const data = useWeatherData(zoom);
-  const [visible, setVisible] = useState(seedVisible);
+  const [visible, setVisible] = useState(loadVisible);
   const [ui, setUi] = useState<UiState>(seedUi);
   const [timeState, setTimeState] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
 
   const style = useMemo(() => basemapStyle(), []);
+
+  // Persist layer visibility across reloads.
+  useEffect(() => {
+    try {
+      localStorage.setItem(VISIBLE_KEY, JSON.stringify(visible));
+    } catch {
+      // storage unavailable (private mode / quota) — non-fatal
+    }
+  }, [visible]);
 
   // Map-wide forecast time (hour offset), defaulting to "now" once the citytile
   // axis loads. Drives every time-aware layer's DataFilter.
