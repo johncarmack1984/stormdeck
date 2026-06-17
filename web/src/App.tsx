@@ -11,6 +11,7 @@ import { basemapStyle } from './basemap';
 import { INITIAL_VIEW } from './config';
 import { LAYERS, type LayerCtx } from './layers';
 import { nextStep, nowOffset, Timeline } from './Timeline';
+import { APP_VERSION } from './version';
 import { useWeatherData } from './weather';
 
 function DeckOverlay(props: MapboxOverlayProps) {
@@ -125,7 +126,12 @@ export default function App() {
       {/* z-10 clears the deck.gl overlay canvas, which sits in maplibre's
           control container at z-index 2 */}
       <div className="dark absolute top-3 left-3 z-10 flex select-none flex-col gap-2 rounded-lg bg-slate-900/80 px-3.5 py-3 text-slate-200 text-sm shadow-lg backdrop-blur-sm">
-        <h1 className="mb-0.5 font-bold text-base tracking-wider">stormdeck</h1>
+        <h1 className="mb-0.5 flex items-baseline gap-1.5 font-bold text-base tracking-wider">
+          stormdeck
+          <span className="font-normal text-[10px] text-slate-400 tracking-normal">
+            {APP_VERSION}
+          </span>
+        </h1>
         {LAYERS.map((l) => (
           <Fragment key={l.id}>
             <div className="flex items-center justify-between gap-6">

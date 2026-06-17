@@ -18,7 +18,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # Full history + tags so the build's `git describe` resolves the
+      # release version stamped into the app (vite.config.ts appVersion()).
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
         with:
           version: 10
