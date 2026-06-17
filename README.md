@@ -134,8 +134,9 @@ just release 0.1.0      # an exact version
 
 A manual tag is pushed with your own credentials, so it fires `release.yml`
 (the manual path) instead of `auto-release`. To skip the release for a trivial
-merge, put `[skip release]` in the squash-merge message. To roll back, revert
-via a PR and merge — CD redeploys and the next patch is cut.
+merge, put `[skip release]` in the **PR title** (the squash subject — only the
+subject line is checked). To roll back, revert via a PR and merge — CD
+redeploys and the next patch is cut.
 
 ## Local dev
 
