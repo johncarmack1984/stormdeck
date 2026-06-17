@@ -117,7 +117,7 @@ export default function App() {
         attributionControl={{
           compact: false,
           customAttribution:
-            'Radar: <a href="https://www.rainviewer.com/">RainViewer</a> / NOAA · Alerts: <a href="https://www.weather.gov/">NWS</a> · <a href="https://open-meteo.com/">Open-Meteo</a>',
+            'Radar: <a href="https://www.rainviewer.com/">RainViewer</a> / NOAA · Alerts: <a href="https://www.weather.gov/">NWS</a> · Conditions: <a href="https://open-meteo.com/">Open-Meteo</a> · Wind: <a href="https://registry.opendata.aws/noaa-gfs-bdp-pds/">NOAA GFS</a> · Cities: <a href="https://www.geonames.org/">GeoNames</a>',
         }}
       >
         <DeckOverlay layers={layers} getTooltip={getTooltip} />
