@@ -10,7 +10,9 @@ name: auto-release
 # user-pushed tag fires release.yml, the manual path). To skip a release for a
 # trivial merge, put [skip release] in the PR title (the squash subject) — the
 # check reads only the subject line, so mentioning it in a PR/commit body (as
-# this very comment does) does not trip it.
+# this very comment does) does not trip it. Docs-only merges (only Markdown,
+# docs/, or image assets changed) skip the release automatically — no marker
+# needed.
 on:
   push:
     branches: [main]
@@ -40,6 +42,20 @@ jobs:
           if git log -1 --pretty=%s | grep -qiE '\[skip[ -]release\]'; then
             echo "[skip release] in the commit subject — no release cut."
             exit 0
+          fi
+          # Docs-only merges never cut a release, even without the marker: if
+          # every file this merge changed is documentation (Markdown, docs/, or
+          # an image asset), there's no app change to version. Count comparison
+          # (not grep -qv) to stay portable across BSD/GNU grep.
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          if [ -n "$changed" ]; then
+            total=$(printf '%s\n' "$changed" | wc -l | tr -d ' ')
+            docs=$(printf '%s\n' "$changed" | grep -Ec '(\.md$|^docs/|\.(gif|png|jpe?g|webp|svg)$)' || true)
+            if [ "$total" = "$docs" ]; then
+              echo "Docs-only merge — no release cut. Changed files:"
+              printf '%s\n' "$changed"
+              exit 0
+            fi
           fi
           # Idempotent: if this commit is already tagged (re-run, or a manual
           # release just landed), there's nothing to cut.
