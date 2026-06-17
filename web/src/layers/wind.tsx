@@ -1,84 +1,85 @@
-import type { Color } from '@deck.gl/core';
-import { LineLayer, ScatterplotLayer } from '@deck.gl/layers';
-import type { Point } from '../generated/geojson';
-import type { GridProps } from '../generated/weather';
-import { age, type WeatherFc } from '../weather';
+import { WindLayer } from 'deck-wind-layer';
+import { Slider } from '@/components/ui/slider';
+import { WEATHER_BASE } from '../config';
+import type { WindTexIndex } from '../generated/weather';
+import { age } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
+import { WindRasterLayer } from './windRasterLayer';
 
-type GridFc = WeatherFc<Point, GridProps>;
-
-interface WindSeg {
-  from: [number, number];
-  to: [number, number];
-  mph: number;
+/** The forecast step nearest the map-wide time (steps are 3h apart). */
+function nearestStep(hours: number[], t: number): number {
+  return hours.reduce((best, h) =>
+    Math.abs(h - t) < Math.abs(best - t) ? h : best,
+  );
 }
 
 /**
- * Vector per grid cell pointing where the wind blows toward, scaled by speed.
- * `kmScale` stretches vectors for the coarse global lattice viewed from far out
- * (lengths sized for a metro grid vanish at planet zoom).
+ * Windy-style wind: a colored wind-speed raster (`WindRasterLayer`) under
+ * animated particles (`WindLayer` from the `deck-wind-layer` package), both
+ * reading the GFS u/v texture for the forecast step nearest `ctx.time`. The
+ * layer ids are stable, so scrubbing the timeline just swaps the texture
+ * (`image` prop), no rebuild.
  */
-function windSegments(grid: GridFc, kmScale: number): WindSeg[] {
-  return grid.features
-    .filter((f) => f.properties.windMph != null && f.properties.windDir != null)
-    .map((f) => {
-      const [lon, lat] = f.geometry.coordinates;
-      const mph = f.properties.windMph as number;
-      const dir = f.properties.windDir as number;
-      // windDir is meteorological (the direction the wind comes FROM).
-      const toward = ((dir + 180) * Math.PI) / 180;
-      const lengthKm = (2 + mph * 0.6) * kmScale;
-      const dLat = (lengthKm / 111) * Math.cos(toward);
-      const dLon =
-        (lengthKm / (111 * Math.cos((lat * Math.PI) / 180))) * Math.sin(toward);
-      return {
-        from: [lon, lat] as [number, number],
-        to: [lon + dLon, lat + dLat] as [number, number],
-        mph,
-      };
-    });
-}
-
-function windColor(mph: number): Color {
-  if (mph < 5) return [148, 163, 184, 200];
-  if (mph < 15) return [56, 132, 222, 220];
-  if (mph < 25) return [245, 158, 11, 235];
-  return [220, 38, 38, 255];
-}
-
-export const wind: WeatherLayer<GridFc> = {
+export const wind: WeatherLayer<WindTexIndex> = {
   id: 'wind',
   label: () => 'wind',
-  legend: <Swatch className="bg-[#3884de]" />,
+  legend: (
+    <Swatch className="bg-linear-to-r from-blue-700 via-green-400 to-fuchsia-600" />
+  ),
   defaultVisible: true,
-  select: (w) => w.activeGrid,
-  build: (grid, ctx) => {
-    const segs = windSegments(grid, ctx.region ? 1 : 30);
-    if (!segs.length) return [];
+  initialUi: { speed: 0.15, opacity: 0.6 },
+  select: (w) => w.windTex,
+  build: (idx, ctx) => {
+    const step = nearestStep(idx.hours, ctx.time);
+    const common = {
+      image: `${WEATHER_BASE}/weather/windtex/${idx.snapshotMs}/${step}.png`,
+      uMin: idx.uMin,
+      uMax: idx.uMax,
+      vMin: idx.vMin,
+      vMax: idx.vMax,
+    };
+    // Array order = paint order: raster underneath, particles on top.
     return [
-      new LineLayer<WindSeg>({
-        id: 'wind-vectors',
-        data: segs,
-        getSourcePosition: (d) => d.from,
-        getTargetPosition: (d) => d.to,
-        getColor: (d) => windColor(d.mph),
-        getWidth: (d) => Math.max(1.5, Math.min(5, d.mph / 8)),
-        widthUnits: 'pixels',
+      new WindRasterLayer({
+        id: 'wind-raster',
+        ...common,
+        opacity: ctx.ui.opacity ?? 0.6,
       }),
-      new ScatterplotLayer<WindSeg>({
-        id: 'wind-origins',
-        data: segs,
-        getPosition: (d) => d.from,
-        getFillColor: [70, 80, 95, 200],
-        radiusMinPixels: 2,
-        radiusMaxPixels: 2,
+      new WindLayer({
+        id: 'wind-particles',
+        ...common,
+        speedFactor: ctx.ui.speed ?? 0.15,
       }),
     ];
   },
-  controls: (ctx, grid) => (
-    <div className="text-slate-400 text-xs">
-      {age(grid?.generated_ms)} · {ctx.region ? 'regional' : 'global'}
+  controls: (ctx, idx) => (
+    <div className="flex flex-col gap-1.5">
+      <div className="text-slate-400 text-xs">GFS · {age(idx?.snapshotMs)}</div>
+      <label className="flex items-center gap-2 text-slate-400 text-xs">
+        <span className="w-10 shrink-0">fill</span>
+        <Slider
+          className="flex-1"
+          value={[ctx.ui.opacity ?? 0.6]}
+          min={0}
+          max={1}
+          step={0.05}
+          onValueChange={([v]) => ctx.setUi({ opacity: v })}
+          aria-label="wind fill opacity"
+        />
+      </label>
+      <label className="flex items-center gap-2 text-slate-400 text-xs">
+        <span className="w-10 shrink-0">speed</span>
+        <Slider
+          className="flex-1"
+          value={[ctx.ui.speed ?? 0.15]}
+          min={0.05}
+          max={0.3}
+          step={0.05}
+          onValueChange={([v]) => ctx.setUi({ speed: v })}
+          aria-label="wind particle speed"
+        />
+      </label>
     </div>
   ),
 };

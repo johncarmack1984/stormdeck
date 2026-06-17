@@ -26,6 +26,12 @@ importers:
       '@fontsource-variable/geist':
         specifier: ^5.2.9
         version: 5.2.9
+      '@luma.gl/core':
+        specifier: ^9.3.3
+        version: 9.3.3
+      '@luma.gl/engine':
+        specifier: ^9.3.3
+        version: 9.3.3(@luma.gl/core@9.3.3)(@luma.gl/shadertools@9.3.3(@luma.gl/core@9.3.3))
       '@protomaps/basemaps':
         specifier: ^5.7.2
         version: 5.7.2
@@ -35,6 +41,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      deck-wind-layer:
+        specifier: ^0.1.0
+        version: 0.1.0(@deck.gl/core@9.3.4)(@luma.gl/core@9.3.3)(@luma.gl/engine@9.3.3(@luma.gl/core@9.3.3)(@luma.gl/shadertools@9.3.3(@luma.gl/core@9.3.3)))
       lucide-react:
         specifier: ^1.18.0
         version: 1.18.0(react@19.2.7)
@@ -1891,6 +1900,14 @@ packages:
     peerDependenciesMeta:
       supports-color:
         optional: true
+
+  deck-wind-layer@0.1.0:
+    resolution: {integrity: sha512-HJv+b7kC5dt4xULdfravlLGGNdCldaYHvkUmqu0+Dj10vaa0ONcl/Dl8M+yfeq9OU84rr39uveS4Opyzb8utrg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@deck.gl/core': ^9.3.0
+      '@luma.gl/core': ^9.3.0
+      '@luma.gl/engine': ^9.3.0
 
   dedent@1.7.2:
     resolution: {integrity: sha512-WzMx3mW98SN+zn3hgemf4OzdmyNhhhKz5Ay0pUfQiMQ3e1g+xmTJWp/pKdwKVXhdSkAEGIIzqeuWrL3mV/AXbA==}
@@ -5253,6 +5270,12 @@ snapshots:
   debug@4.4.3:
     dependencies:
       ms: 2.1.3
+
+  deck-wind-layer@0.1.0(@deck.gl/core@9.3.4)(@luma.gl/core@9.3.3)(@luma.gl/engine@9.3.3(@luma.gl/core@9.3.3)(@luma.gl/shadertools@9.3.3(@luma.gl/core@9.3.3))):
+    dependencies:
+      '@deck.gl/core': 9.3.4
+      '@luma.gl/core': 9.3.3
+      '@luma.gl/engine': 9.3.3(@luma.gl/core@9.3.3)(@luma.gl/shadertools@9.3.3(@luma.gl/core@9.3.3))
 
   dedent@1.7.2: {}
 

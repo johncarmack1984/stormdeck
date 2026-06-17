@@ -8,7 +8,12 @@ import {
   WEATHER_BASE,
 } from './config';
 import type { FeatureCollection, Geometry, Point } from './generated/geojson';
-import type { AlertProps, CityTileIndex, GridProps } from './generated/weather';
+import type {
+  AlertProps,
+  CityTileIndex,
+  GridProps,
+  WindTexIndex,
+} from './generated/weather';
 
 // The payload shapes come from the Rust producer — weather-ingest's
 // contract.rs is the single source of truth, and `just build types`
@@ -65,6 +70,11 @@ export const useGlobalGrid = () =>
 export const useCityTiles = () =>
   useFeed<CityTileIndex>('citytile/latest.json', 600_000);
 
+/** The wind u/v texture index (snapshot + forecast hours + m/s bounds). The
+ * wind layer loads the per-step PNG nearest the map-wide timeline. */
+export const useWindTex = () =>
+  useFeed<WindTexIndex>('windtex/latest.json', 600_000);
+
 /**
  * Latest worldwide radar frame from RainViewer. Falls back to the IEM
  * NEXRAD composite (US only) until — or unless — the API answers.
@@ -114,6 +124,8 @@ export interface WeatherData {
   activeGrid: WeatherFc<Point, GridProps> | null;
   /** Point-forecast tile index (cities + the forecast time axis). */
   cityTiles: CityTileIndex | null;
+  /** Wind u/v texture index (snapshot + forecast hours + m/s bounds). */
+  windTex: WindTexIndex | null;
   /** True near the ground (fine grid); false far out (global lattice). */
   region: boolean;
 }
@@ -125,6 +137,7 @@ export function useWeatherData(zoom: number): WeatherData {
   const globalGrid = useGlobalGrid();
   const radar = useRadarTiles();
   const cityTiles = useCityTiles();
+  const windTex = useWindTex();
   const region = zoom >= GRID_ZOOM_SPLIT;
   return {
     alerts,
@@ -133,6 +146,7 @@ export function useWeatherData(zoom: number): WeatherData {
     globalGrid,
     activeGrid: region ? grid : globalGrid,
     cityTiles,
+    windTex,
     region,
   };
 }
