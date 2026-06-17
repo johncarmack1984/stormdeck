@@ -2,6 +2,8 @@
 
 **Live at [stormdeck.live](https://stormdeck.live).**
 
+![stormdeck — live weather radar and NWS alerts on a deck.gl map](.github/stormdeck.gif?raw=true)
+
 Live weather on a deck.gl map, served almost entirely from free tiers — the whole bill is thirteen dollars a year of vanity domain plus a few cents a month for Route 53 and SES email.
 
 OpenStreetMap basemap tiles come from [martin](https://github.com/maplibre/martin) running **inside AWS Lambda**, reading [PMTiles](https://docs.protomaps.com/pmtiles/) extracts straight from a private S3 bucket. A scheduled Rust lambda ([cargo-lambda](https://www.cargo-lambda.info/)) snapshots US-wide NWS alerts and decodes NOAA GFS GRIB2 straight from NOAA's open-data S3 bucket into global 2 m temperatures — a planet-wide lattice when zoomed out, per-city point forecasts when zoomed in — plus animated global wind (city list from GeoNames). Radar is RainViewer's global composite (IEM NEXRAD as fallback). The web app is React + deck.gl + MapLibre, served from the same CloudFront distribution as the tiles and weather — one origin, no CORS, hashed assets cached immutable at the edge. Map views mirror into the URL hash, so any view is a link.
