@@ -123,6 +123,8 @@ just dev            # martin :3030 + vite :5173 (local data, overrides the defau
 
 CDK → CloudFormation: state lives in the account, and pushes to `main` deploy through the repo-pinned OIDC role (the `StormdeckGithubOidc` stack from step 3). `just cdk synth` works offline, and the `profile=` / `region=` variables (`.just/common.just`) thread through every infra recipe (`cdk bootstrap`, `cdk deploy`, `cdk outputs`, `tiles upload`, `weather prime`, …). Module justfiles live in their home folders, so e.g. `just deploy` from inside `cdk/` works too.
 
+Supply chain: every GitHub Action is pinned to a commit SHA (Dependabot bumps them weekly), `cargo-lambda` is version-pinned, and the prebuilt martin binary is fetched from a pinned release and checksum-verified before it's packaged into the Lambda. The deploy workflow grants permissions per job, so only the AWS-touching jobs (`infra`, `web`) ever receive an OIDC token.
+
 One piece lives outside CloudFormation: the stormdeck.live certificate was requested once via the ACM CLI in us-east-1 (CloudFront only takes certs from there) and is pinned by ARN in the stack. Its DNS validation records *are* stack-managed, so renewals stay hands-off. Mind the CAA gotcha: ACM follows CAA policy through CNAMEs, so a record pointing at a host with restrictive CAA (github.io, say) blocks issuance for that name.
 
 ## Configuration
