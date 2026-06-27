@@ -1,0 +1,14 @@
+# Keep the SHA-pinned GitHub Actions current. Dependabot reads the version
+# comment beside each pin (e.g. `# v6`) and opens PRs that bump the pin to a
+# newer release's commit SHA — the counterpart to pinning, so the pins don't
+# rot. Scoped to actions for now (npm in web/ + cdk/ and cargo in crates/ are
+# left out to keep PR volume down); the martin release binary isn't trackable
+# here and is bumped by hand in scripts/build-martin-lambda.sh.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

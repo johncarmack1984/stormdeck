@@ -17,12 +17,11 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
-# Union of what the two halves need: OIDC for AWS, contents for checkout,
-# deployments to record the production publish.
+# Least privilege at the workflow level — just enough for checkout. Each job
+# escalates only what it needs (OIDC on infra/web, deployments on web), so the
+# `changes` job never receives an OIDC id-token.
 permissions:
-  id-token: write
   contents: read
-  deployments: write
 
 # Serialize every deploy (both halves share the group) so two quick merges can't
 # interleave a later infra deploy with an earlier web publish.
@@ -31,12 +30,15 @@ concurrency: deploy
 jobs:
   changes:
     runs-on: ubuntu-latest
+    # Just reads the repo to diff paths — no OIDC, no write.
+    permissions:
+      contents: read
     outputs:
       web: ${{ steps.filter.outputs.web }}
       infra: ${{ steps.filter.outputs.infra }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         with:
           filters: |
@@ -55,17 +57,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    # OIDC to assume the deploy role + read to checkout. No deployments here.
+    permissions:
+      id-token: write
+      contents: read
     # No AWS keys: assumes stormdeck-github-deploy via OIDC (trust-scoped to
     # main on this repo). cdk uses the admin bootstrap cfn-exec role.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: crates
       - name: Install cargo-lambda
-        run: pip install cargo-lambda
+        run: pip install cargo-lambda==1.9.1
 
       # weather-ingest is compiled by cargo-lambda-cdk during cdk deploy (synth),
       # using the cargo-lambda + toolchain above; only the prebuilt martin binary
@@ -73,16 +79,16 @@ jobs:
       - name: Build martin lambda zip
         run: scripts/build-martin-lambda.sh build/martin-lambda.zip
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           version: 10
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: lts/*
           cache: pnpm
           cache-dependency-path: cdk/pnpm-lock.yaml
 
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: aws-actions/configure-aws-credentials@254c19bd240aabef8777f48595e9d2d7b972184b # v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
@@ -130,9 +136,15 @@ jobs:
       needs.infra.result != 'failure' &&
       needs.infra.result != 'cancelled'
     runs-on: ubuntu-latest
+    # OIDC to assume the deploy role + read to checkout + deployments to record
+    # the production publish via the API.
+    permissions:
+      id-token: write
+      contents: read
+      deployments: write
     steps:
       # Full history + tags so the version stamp resolves (next step).
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
       # Bake in the version this commit ships as: its exact tag if it has one,
@@ -143,10 +155,10 @@ jobs:
           v=$(git describe --tags --exact-match HEAD 2>/dev/null || scripts/next-version.sh patch)
           echo "VITE_APP_VERSION=$v" >>"$GITHUB_ENV"
           echo "version: $v"
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
         with:
           version: 10
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: lts/*
           cache: pnpm
@@ -159,7 +171,7 @@ jobs:
           # API_BASE resolves to '' in production builds (web/src/config.ts) —
           # same origin as the tiles and weather feeds, so all fetches relative.
           BASE_PATH: /
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: aws-actions/configure-aws-credentials@254c19bd240aabef8777f48595e9d2d7b972184b # v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
