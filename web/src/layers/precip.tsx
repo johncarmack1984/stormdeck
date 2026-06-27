@@ -6,7 +6,7 @@ import { WEATHER_BASE } from '../config';
 import type { CityTileIndex, RefcTexIndex } from '../generated/weather';
 import { nearestStep } from '../Timeline';
 import { age } from '../weather';
-import { RefcRasterLayer } from './refcRasterLayer';
+import { RefcRasterLayer } from './scalarRasterLayer';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
@@ -74,8 +74,8 @@ export const precip: WeatherLayer<PrecipData> = {
         new RefcRasterLayer({
           id: 'precip-forecast',
           image: `${WEATHER_BASE}/weather/refctex/${r.refc.snapshotMs}/${r.step}.png`,
-          dbzMin: r.refc.dbzMin,
-          dbzMax: r.refc.dbzMax,
+          min: r.refc.dbzMin,
+          max: r.refc.dbzMax,
           opacity,
         }),
       ];
