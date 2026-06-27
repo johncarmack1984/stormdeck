@@ -3,7 +3,7 @@ import { WEATHER_BASE } from '../config';
 import type { CapeTexIndex } from '../generated/weather';
 import { nearestStep } from '../Timeline';
 import { age } from '../weather';
-import { CapeRasterLayer } from './capeRasterLayer';
+import { CapeRasterLayer } from './scalarRasterLayer';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
@@ -30,8 +30,8 @@ export const cape: WeatherLayer<CapeTexIndex> = {
       new CapeRasterLayer({
         id: 'cape-raster',
         image: `${WEATHER_BASE}/weather/capetex/${idx.snapshotMs}/${step}.png`,
-        capeMin: idx.capeMin,
-        capeMax: idx.capeMax,
+        min: idx.capeMin,
+        max: idx.capeMax,
         opacity: ctx.ui.opacity ?? 0.5,
       }),
     ];
