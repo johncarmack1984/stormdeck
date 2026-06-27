@@ -5,6 +5,8 @@ import { WEATHER_BASE } from '../config';
 import type { WindTexIndex } from '../generated/weather';
 import { nearestStep } from '../Timeline';
 import { age } from '../weather';
+import { RasterLegend } from './legend';
+import { WIND_COLOR_MAX, WIND_STOPS } from './rasterShared';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 import { WindRasterLayer } from './windRasterLayer';
@@ -57,6 +59,11 @@ export const wind: WeatherLayer<WindTexIndex> = {
   controls: (ctx, idx) => (
     <div className="flex flex-col gap-1.5">
       <div className="text-slate-400 text-xs">GFS · {age(idx?.snapshotMs)}</div>
+      <RasterLegend
+        stops={WIND_STOPS}
+        domain={[0, WIND_COLOR_MAX]}
+        unit="m/s"
+      />
       <label className="flex items-center gap-2 text-slate-400 text-xs">
         <span className="w-10 shrink-0">fill</span>
         <Slider

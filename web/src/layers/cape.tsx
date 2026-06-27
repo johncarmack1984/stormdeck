@@ -3,6 +3,8 @@ import { WEATHER_BASE } from '../config';
 import type { CapeTexIndex } from '../generated/weather';
 import { nearestStep } from '../Timeline';
 import { age } from '../weather';
+import { RasterLegend } from './legend';
+import { CAPE_DOMAIN, CAPE_STOPS } from './rasterShared';
 import { CapeRasterLayer } from './scalarRasterLayer';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
@@ -41,6 +43,7 @@ export const cape: WeatherLayer<CapeTexIndex> = {
       <div className="text-slate-400 text-xs">
         CAPE · GFS · {age(idx?.snapshotMs)}
       </div>
+      <RasterLegend stops={CAPE_STOPS} domain={CAPE_DOMAIN} unit="J/kg" />
       <Slider
         value={[ctx.ui.opacity ?? 0.5]}
         min={0.1}
