@@ -44,9 +44,18 @@ export function age(ms?: number): string {
   return min <= 0 ? 'just now' : `${min} min ago`;
 }
 
-function useFeed<T>(path: string, intervalMs: number): T | null {
+/** Poll a weather JSON feed. `enabled` gates it on the consuming layer's
+ * visibility — a feed for a hidden layer never fetches (and stops on hide),
+ * which keeps the 1.8 MB lattice off the critical path when temperature is off
+ * (the default). Polling lazy-starts the first time the layer is enabled. */
+function useFeed<T>(
+  path: string,
+  intervalMs: number,
+  enabled = true,
+): T | null {
   const [data, setData] = useState<T | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     const load = () =>
       fetch(`${WEATHER_BASE}/weather/${path}`, { cache: 'no-cache' })
@@ -64,43 +73,47 @@ function useFeed<T>(path: string, intervalMs: number): T | null {
       alive = false;
       clearInterval(timer);
     };
-  }, [path, intervalMs]);
+  }, [path, intervalMs, enabled]);
   return data;
 }
 
 export const useAlerts = () =>
   useFeed<WeatherFc<Geometry, AlertProps>>('alerts.json', 60_000);
-/** The whole-planet temperature lattice (the zoomed-out grid). */
-export const useLattice = () => useFeed<LatticeFc>('lattice.json', 600_000);
+/** The whole-planet temperature lattice (the zoomed-out grid). 1.8 MB, so it's
+ * gated on the temperature layer being visible (off by default). */
+export const useLattice = (enabled: boolean) =>
+  useFeed<LatticeFc>('lattice.json', 600_000, enabled);
 
 /** The point-forecast tile index (snapshot + hours). The citytile layer's
- * TileLayer fetches the actual per-tile JSON on demand. */
+ * TileLayer fetches the actual per-tile JSON on demand. Always loaded — it's
+ * also the map-wide timeline's axis. */
 export const useCityTiles = () =>
   useFeed<CityTileIndex>('citytile/latest.json', 600_000);
 
 /** The wind u/v texture index (snapshot + forecast hours + m/s bounds). The
  * wind layer loads the per-step PNG nearest the map-wide timeline. */
-export const useWindTex = () =>
-  useFeed<WindTexIndex>('windtex/latest.json', 600_000);
+export const useWindTex = (enabled: boolean) =>
+  useFeed<WindTexIndex>('windtex/latest.json', 600_000, enabled);
 
 /** The REFC precip texture index (snapshot + forecast hours + dBZ bounds). The
  * precipitation layer loads the per-step PNG nearest the map-wide timeline when
  * scrubbed into the future. */
-export const useRefcTex = () =>
-  useFeed<RefcTexIndex>('refctex/latest.json', 600_000);
+export const useRefcTex = (enabled: boolean) =>
+  useFeed<RefcTexIndex>('refctex/latest.json', 600_000, enabled);
 
 /** The surface-CAPE texture index (snapshot + forecast hours + J/kg bounds). The
  * storm-potential overlay loads the per-step PNG nearest the map-wide timeline. */
-export const useCapeTex = () =>
-  useFeed<CapeTexIndex>('capetex/latest.json', 600_000);
+export const useCapeTex = (enabled: boolean) =>
+  useFeed<CapeTexIndex>('capetex/latest.json', 600_000, enabled);
 
 /**
  * Latest worldwide radar frame from RainViewer. Falls back to the IEM
  * NEXRAD composite (US only) until — or unless — the API answers.
  */
-export function useRadarTiles(): RadarSource {
+export function useRadarTiles(enabled = true): RadarSource {
   const [source, setSource] = useState<RadarSource>(RADAR_FALLBACK);
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     const load = () =>
       fetch(RAINVIEWER_API)
@@ -126,7 +139,7 @@ export function useRadarTiles(): RadarSource {
       alive = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [enabled]);
   return source;
 }
 
@@ -146,16 +159,17 @@ export interface WeatherData {
   capeTex: CapeTexIndex | null;
 }
 
-/** One hook, all feeds — keeps the layer registry itself hook-free. The
- * temperature layer picks lattice vs. city tiles from `ctx.zoom` itself, so
- * this hook no longer needs the zoom. */
-export function useWeatherData(): WeatherData {
+/** One hook, all feeds — keeps the layer registry itself hook-free. `visible`
+ * (the layer-id → on/off map) gates each feed on its layer, so a hidden layer
+ * costs no fetch or polling; alerts and the citytile axis always load (the axis
+ * drives the shared timeline). */
+export function useWeatherData(visible: Record<string, boolean>): WeatherData {
   const alerts = useAlerts();
-  const lattice = useLattice();
-  const radar = useRadarTiles();
+  const lattice = useLattice(visible.temp);
+  const radar = useRadarTiles(visible.precip);
   const cityTiles = useCityTiles();
-  const windTex = useWindTex();
-  const refcTex = useRefcTex();
-  const capeTex = useCapeTex();
+  const windTex = useWindTex(visible.wind);
+  const refcTex = useRefcTex(visible.precip);
+  const capeTex = useCapeTex(visible.cape);
   return { alerts, radar, lattice, cityTiles, windTex, refcTex, capeTex };
 }

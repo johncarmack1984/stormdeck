@@ -1,8 +1,8 @@
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
 
 /** The deployed version: the nearest `vX.Y.Z` release tag, plus `-N-g<sha>`
  * when the build is N commits past it (so the live label is commit-exact
@@ -33,5 +33,28 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion()),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the heavy GPU/map vendors into their own chunks so they cache
+        // across deploys (only the app chunk changes on most releases) and load
+        // in parallel instead of one ~1 MB blob.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('maplibre-gl') || id.includes('react-map-gl')) {
+            return 'maplibre';
+          }
+          if (
+            id.includes('@deck.gl') ||
+            id.includes('@luma.gl') ||
+            id.includes('deck-wind-layer')
+          ) {
+            return 'deck';
+          }
+          return undefined;
+        },
+      },
+    },
   },
 });
