@@ -77,59 +77,95 @@ export function equirectGridMesh(cols: number, rows: number): Float32Array {
   return new Float32Array(v);
 }
 
-/** Wind-speed colormap (normalized 0..1 → rgb): calm blue → teal → green →
- * yellow → orange → red → magenta. Shared by the raster fill (and a future
- * legend) so the scale is one source of truth. */
-export const WIND_RAMP_GLSL = /* glsl */ `
-vec3 windRamp(float t) {
-  const vec3 c0 = vec3(0.16, 0.22, 0.45); // calm
-  const vec3 c1 = vec3(0.20, 0.55, 0.70); // teal
-  const vec3 c2 = vec3(0.30, 0.74, 0.45); // green
-  const vec3 c3 = vec3(0.93, 0.86, 0.32); // yellow
-  const vec3 c4 = vec3(0.95, 0.55, 0.20); // orange
-  const vec3 c5 = vec3(0.86, 0.24, 0.24); // red
-  const vec3 c6 = vec3(0.72, 0.26, 0.66); // magenta (extreme)
-  float s = clamp(t, 0.0, 1.0) * 6.0;
-  if (s < 1.0) return mix(c0, c1, s);
-  if (s < 2.0) return mix(c1, c2, s - 1.0);
-  if (s < 3.0) return mix(c2, c3, s - 2.0);
-  if (s < 4.0) return mix(c3, c4, s - 3.0);
-  if (s < 5.0) return mix(c4, c5, s - 4.0);
-  return mix(c5, c6, s - 5.0);
-}`;
+/** A single colormap stop, rgb in 0..1 (the GLSL colorspace). */
+export type Rgb = readonly [number, number, number];
 
-/** Composite-reflectivity (dBZ) colormap: green → yellow → orange → red →
- * magenta across ~15→65 dBZ, the conventional radar scale (so the forecast
- * precip matches the live radar's look). The precip layer renders everything
- * below its display threshold transparent, so this only colors actual echo. */
-export const REFC_RAMP_GLSL = /* glsl */ `
-vec3 refcRamp(float dbz) {
-  const vec3 c0 = vec3(0.26, 0.71, 0.42); // ~15 green
-  const vec3 c1 = vec3(0.93, 0.86, 0.32); // ~28 yellow
-  const vec3 c2 = vec3(0.95, 0.55, 0.20); // ~40 orange
-  const vec3 c3 = vec3(0.86, 0.24, 0.24); // ~52 red
-  const vec3 c4 = vec3(0.72, 0.26, 0.66); // ~65 magenta (extreme)
-  float s = clamp((dbz - 15.0) / 12.5, 0.0, 4.0);
-  if (s < 1.0) return mix(c0, c1, s);
-  if (s < 2.0) return mix(c1, c2, s - 1.0);
-  if (s < 3.0) return mix(c2, c3, s - 2.0);
-  return mix(c3, c4, s - 3.0);
+/** Build a GLSL colormap `vec3 ${fn}(float ${param})` from evenly-spaced color
+ * stops; `mapExpr` maps `param` into the segment coordinate s ∈ [0, n-1]. The
+ * stops are exported alongside, so the on-panel legend and the shader share one
+ * source — change a color here and both the map and the legend move. */
+function buildRampGlsl(
+  fn: string,
+  param: string,
+  stops: readonly Rgb[],
+  mapExpr: string,
+): string {
+  const g = (x: number) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
+  const decls = stops
+    .map(
+      (c, i) =>
+        `  const vec3 c${i} = vec3(${g(c[0])}, ${g(c[1])}, ${g(c[2])});`,
+    )
+    .join('\n');
+  const branches = stops
+    .slice(0, -1)
+    .map(
+      (_, i) =>
+        `  if (s < ${i + 1}.0) return mix(c${i}, c${i + 1}, s - ${i}.0);`,
+    )
+    .join('\n');
+  return `
+vec3 ${fn}(float ${param}) {
+${decls}
+  float s = ${mapExpr};
+${branches}
+  return c${stops.length - 1};
 }`;
+}
 
-/** Surface-CAPE (J/kg) colormap: green → yellow → orange → red → magenta across
- * ~500→4500 J/kg, the severe-weather instability scale. The storm-potential
- * layer fades out stable/weak air (< ~250 J/kg) so the overlay only paints where
- * the atmosphere is primed for convection. */
-export const CAPE_RAMP_GLSL = /* glsl */ `
-vec3 capeRamp(float cape) {
-  const vec3 c0 = vec3(0.30, 0.66, 0.36); // ~500 green (weak)
-  const vec3 c1 = vec3(0.93, 0.86, 0.32); // ~1500 yellow (moderate)
-  const vec3 c2 = vec3(0.95, 0.55, 0.20); // ~2500 orange (strong)
-  const vec3 c3 = vec3(0.86, 0.24, 0.24); // ~3500 red (severe)
-  const vec3 c4 = vec3(0.72, 0.26, 0.66); // ~4500 magenta (extreme)
-  float s = clamp((cape - 500.0) / 1000.0, 0.0, 4.0);
-  if (s < 1.0) return mix(c0, c1, s);
-  if (s < 2.0) return mix(c1, c2, s - 1.0);
-  if (s < 3.0) return mix(c2, c3, s - 2.0);
-  return mix(c3, c4, s - 3.0);
-}`;
+/** Wind-speed colormap stops: calm blue → teal → green → yellow → orange → red →
+ * magenta. The ramp input is speed normalized over [0, `WIND_COLOR_MAX`]. */
+export const WIND_STOPS: readonly Rgb[] = [
+  [0.16, 0.22, 0.45], // calm
+  [0.2, 0.55, 0.7], // teal
+  [0.3, 0.74, 0.45], // green
+  [0.93, 0.86, 0.32], // yellow
+  [0.95, 0.55, 0.2], // orange
+  [0.86, 0.24, 0.24], // red
+  [0.72, 0.26, 0.66], // magenta (extreme)
+];
+/** m/s at which the wind colormap saturates (magenta) — the legend's high end. */
+export const WIND_COLOR_MAX = 28;
+export const WIND_RAMP_GLSL = buildRampGlsl(
+  'windRamp',
+  't',
+  WIND_STOPS,
+  'clamp(t, 0.0, 1.0) * 6.0',
+);
+
+/** Composite-reflectivity (dBZ) colormap stops + domain — the conventional radar
+ * scale, so the forecast precip matches the live radar's look. The precip layer
+ * renders everything below its display threshold transparent, so this only
+ * colors actual echo. */
+export const REFC_STOPS: readonly Rgb[] = [
+  [0.26, 0.71, 0.42], // green
+  [0.93, 0.86, 0.32], // yellow
+  [0.95, 0.55, 0.2], // orange
+  [0.86, 0.24, 0.24], // red
+  [0.72, 0.26, 0.66], // magenta (extreme)
+];
+export const REFC_DOMAIN: readonly [number, number] = [15, 65];
+export const REFC_RAMP_GLSL = buildRampGlsl(
+  'refcRamp',
+  'dbz',
+  REFC_STOPS,
+  'clamp((dbz - 15.0) / 12.5, 0.0, 4.0)',
+);
+
+/** Surface-CAPE (J/kg) colormap stops + domain — the severe-weather instability
+ * scale. The storm-potential layer fades out stable/weak air (< ~250 J/kg) so
+ * the overlay only paints where the atmosphere is primed for convection. */
+export const CAPE_STOPS: readonly Rgb[] = [
+  [0.3, 0.66, 0.36], // weak (green)
+  [0.93, 0.86, 0.32], // moderate (yellow)
+  [0.95, 0.55, 0.2], // strong (orange)
+  [0.86, 0.24, 0.24], // severe (red)
+  [0.72, 0.26, 0.66], // extreme (magenta)
+];
+export const CAPE_DOMAIN: readonly [number, number] = [500, 4500];
+export const CAPE_RAMP_GLSL = buildRampGlsl(
+  'capeRamp',
+  'cape',
+  CAPE_STOPS,
+  'clamp((cape - 500.0) / 1000.0, 0.0, 4.0)',
+);

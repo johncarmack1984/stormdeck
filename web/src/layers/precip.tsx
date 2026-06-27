@@ -6,6 +6,8 @@ import { WEATHER_BASE } from '../config';
 import type { CityTileIndex, RefcTexIndex } from '../generated/weather';
 import { nearestStep } from '../Timeline';
 import { age } from '../weather';
+import { RasterLegend } from './legend';
+import { REFC_DOMAIN, REFC_STOPS } from './rasterShared';
 import { RefcRasterLayer } from './scalarRasterLayer';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
@@ -109,6 +111,9 @@ export const precip: WeatherLayer<PrecipData> = {
             ? `GFS forecast · ${age(data?.refc?.snapshotMs)}`
             : 'live · RainViewer / IEM'}
         </div>
+        {forecast && (
+          <RasterLegend stops={REFC_STOPS} domain={REFC_DOMAIN} unit="dBZ" />
+        )}
         <Slider
           value={[ctx.ui.opacity ?? 0.65]}
           min={0.1}
