@@ -115,3 +115,21 @@ vec3 refcRamp(float dbz) {
   if (s < 3.0) return mix(c2, c3, s - 2.0);
   return mix(c3, c4, s - 3.0);
 }`;
+
+/** Surface-CAPE (J/kg) colormap: green → yellow → orange → red → magenta across
+ * ~500→4500 J/kg, the severe-weather instability scale. The storm-potential
+ * layer fades out stable/weak air (< ~250 J/kg) so the overlay only paints where
+ * the atmosphere is primed for convection. */
+export const CAPE_RAMP_GLSL = /* glsl */ `
+vec3 capeRamp(float cape) {
+  const vec3 c0 = vec3(0.30, 0.66, 0.36); // ~500 green (weak)
+  const vec3 c1 = vec3(0.93, 0.86, 0.32); // ~1500 yellow (moderate)
+  const vec3 c2 = vec3(0.95, 0.55, 0.20); // ~2500 orange (strong)
+  const vec3 c3 = vec3(0.86, 0.24, 0.24); // ~3500 red (severe)
+  const vec3 c4 = vec3(0.72, 0.26, 0.66); // ~4500 magenta (extreme)
+  float s = clamp((cape - 500.0) / 1000.0, 0.0, 4.0);
+  if (s < 1.0) return mix(c0, c1, s);
+  if (s < 2.0) return mix(c1, c2, s - 1.0);
+  if (s < 3.0) return mix(c2, c3, s - 2.0);
+  return mix(c3, c4, s - 3.0);
+}`;

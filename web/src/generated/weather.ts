@@ -13,6 +13,23 @@ export type AlertProps = {
 };
 
 /**
+ *  The `capetex/latest.json` pointer: the current snapshot, its forecast-hour
+ *  axis, the equirectangular texture dimensions, and the CAPE (J/kg) bounds the
+ *  grayscale PNG was normalized over (so the web denormalizes identically). The
+ *  per-step textures live at `capetex/{snapshotMs}/{hour}.png` (immutable); the
+ *  web's storm-potential overlay loads whichever step the timeline is on. Same
+ *  axis as windtex/refctex/citytile, so the one timeline scrubs it with the rest.
+ */
+export type CapeTexIndex = {
+  snapshotMs: number;
+  hours: number[];
+  width: number;
+  height: number;
+  capeMin: number;
+  capeMax: number;
+};
+
+/**
  *  One city's point forecast: its name and a temperature series (°F) aligned
  *  element-for-element with the enclosing tile's `hours` axis.
  */

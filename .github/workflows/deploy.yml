@@ -113,7 +113,7 @@ jobs:
             echo "primed $job: $(cat "$out")"
           }
           pids=()
-          for job in alerts temp windtex refc; do prime "$job" & pids+=($!); done
+          for job in alerts temp windtex refc cape; do prime "$job" & pids+=($!); done
           fail=0
           for pid in "${pids[@]}"; do wait "$pid" || fail=1; done
           [ "$fail" -eq 0 ] || { echo "one or more prime jobs failed"; exit 1; }

@@ -31,6 +31,14 @@ pub const WIND_MS_MAX: f32 = 40.0;
 pub const REFC_DBZ_MIN: f32 = -20.0;
 pub const REFC_DBZ_MAX: f32 = 75.0;
 
+/// Surface CAPE (convective available potential energy, J/kg) normalization
+/// range for the storm-potential texture, same scheme as [`REFC_DBZ_MIN`]. 0 is
+/// a stable atmosphere; the web renders below its display threshold (~250 J/kg,
+/// marginal instability) transparent. 5000 J/kg caps all but the most extreme
+/// setups (observed global max ~4800), which clamp.
+pub const CAPE_JKG_MIN: f32 = 0.0;
+pub const CAPE_JKG_MAX: f32 = 5000.0;
+
 /// A decoded 0.25° global field, row-major from (90N, 0E).
 pub struct Field {
     values: Vec<f32>,
