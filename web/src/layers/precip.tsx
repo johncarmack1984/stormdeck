@@ -107,7 +107,7 @@ export const precip: WeatherLayer<PrecipData> = {
         <div className="text-slate-400 text-xs">
           {forecast
             ? `GFS forecast · ${age(data?.refc?.snapshotMs)}`
-            : 'live · RainViewer / NOAA'}
+            : 'live · RainViewer / IEM'}
         </div>
         <Slider
           value={[ctx.ui.opacity ?? 0.65]}

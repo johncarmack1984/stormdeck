@@ -1,3 +1,4 @@
+import type { Layer } from '@deck.gl/core';
 import { WindLayer } from 'deck-wind-layer';
 import { Slider } from '@/components/ui/slider';
 import { WEATHER_BASE } from '../config';
@@ -34,18 +35,24 @@ export const wind: WeatherLayer<WindTexIndex> = {
       vMax: idx.vMax,
     };
     // Array order = paint order: raster underneath, particles on top.
-    return [
+    const layers: Layer[] = [
       new WindRasterLayer({
         id: 'wind-raster',
         ...common,
         opacity: ctx.ui.opacity ?? 0.6,
       }),
-      new WindLayer({
-        id: 'wind-particles',
-        ...common,
-        speedFactor: ctx.ui.speed ?? 0.15,
-      }),
     ];
+    // prefers-reduced-motion: show the speed raster only, no animated particles.
+    if (!ctx.reducedMotion) {
+      layers.push(
+        new WindLayer({
+          id: 'wind-particles',
+          ...common,
+          speedFactor: ctx.ui.speed ?? 0.15,
+        }),
+      );
+    }
+    return layers;
   },
   controls: (ctx, idx) => (
     <div className="flex flex-col gap-1.5">
