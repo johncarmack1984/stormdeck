@@ -62,8 +62,8 @@ function useReducedMotion(): boolean {
 
 export default function App() {
   const [zoom, setZoom] = useState(INITIAL_VIEW.zoom);
-  const data = useWeatherData();
   const [visible, setVisible] = useState(loadVisible);
+  const data = useWeatherData(visible);
   const [ui, setUi] = useState<UiState>(seedUi);
   const [timeState, setTimeState] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
