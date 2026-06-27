@@ -13,6 +13,9 @@ export interface LayerCtx {
   /** Map-wide forecast time as an hour offset from the citytile snapshot.
    * Time-aware layers filter their data to it (via DataFilterExtension). */
   time: number;
+  /** User prefers reduced motion — layers should suppress continuous animation
+   * (wind drops its particles, rendering the speed raster only). */
+  reducedMotion: boolean;
   ui: Record<string, number>;
   setUi: (patch: Record<string, number>) => void;
 }

@@ -43,6 +43,23 @@ const seedUi = (): UiState =>
     LAYERS.filter((l) => l.initialUi).map((l) => [l.id, { ...l.initialUi }]),
   );
 
+/** Track `prefers-reduced-motion`, reactively. Layers read it via LayerCtx to
+ * suppress continuous animation (wind drops its particles). */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () =>
+      typeof matchMedia !== 'undefined' &&
+      matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+  useEffect(() => {
+    const mq = matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return reduced;
+}
+
 export default function App() {
   const [zoom, setZoom] = useState(INITIAL_VIEW.zoom);
   const data = useWeatherData();
@@ -50,6 +67,7 @@ export default function App() {
   const [ui, setUi] = useState<UiState>(seedUi);
   const [timeState, setTimeState] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   const style = useMemo(() => basemapStyle(), []);
 
@@ -80,6 +98,7 @@ export default function App() {
   const ctxFor = (id: string): LayerCtx => ({
     zoom,
     time,
+    reducedMotion,
     ui: ui[id] ?? {},
     setUi: (patch) => setUi((u) => ({ ...u, [id]: { ...u[id], ...patch } })),
   });
@@ -116,7 +135,7 @@ export default function App() {
         attributionControl={{
           compact: false,
           customAttribution:
-            'Radar: <a href="https://www.rainviewer.com/">RainViewer</a> / NOAA · Alerts: <a href="https://www.weather.gov/">NWS</a> · Temps, wind, precip &amp; storm forecast: <a href="https://registry.opendata.aws/noaa-gfs-bdp-pds/">NOAA GFS</a> · Cities: <a href="https://www.geonames.org/">GeoNames</a>',
+            'Radar: <a href="https://www.rainviewer.com/">RainViewer</a> / <a href="https://mesonet.agron.iastate.edu/">IEM NEXRAD</a> / NOAA · Alerts: <a href="https://www.weather.gov/">NWS</a> · Temps, wind, precip &amp; storm forecast: <a href="https://registry.opendata.aws/noaa-gfs-bdp-pds/">NOAA GFS</a> · Cities: <a href="https://www.geonames.org/">GeoNames</a>',
         }}
       >
         <DeckOverlay layers={layers} getTooltip={getTooltip} />
@@ -124,7 +143,7 @@ export default function App() {
 
       {/* z-10 clears the deck.gl overlay canvas, which sits in maplibre's
           control container at z-index 2 */}
-      <div className="dark absolute top-3 left-3 z-10 flex select-none flex-col gap-2 rounded-lg bg-slate-900/80 px-3.5 py-3 text-slate-200 text-sm shadow-lg backdrop-blur-sm">
+      <div className="dark absolute top-3 left-3 z-10 flex max-h-[calc(100dvh-1.5rem)] select-none flex-col gap-2 overflow-y-auto overscroll-contain rounded-lg bg-slate-900/90 px-3.5 py-3 text-slate-200 text-sm shadow-lg backdrop-blur-sm">
         <h1 className="mb-0.5 flex items-baseline gap-1.5 font-bold text-base tracking-wider">
           stormdeck
           <span className="font-normal text-[10px] text-slate-400 tracking-normal">
