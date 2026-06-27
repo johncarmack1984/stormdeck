@@ -48,11 +48,17 @@ export class StormdeckEmailStack extends Stack {
       identity: ses.Identity.publicHostedZone(zone),
     });
 
-    // SPF — authorize Amazon SES to send for the domain.
+    // Apex TXT record set. Route 53 allows only one TXT record-set per name, so
+    // the SPF policy (authorizing Amazon SES to send) and the Google Search
+    // Console domain-verification string share this single record. (Logical id
+    // stays 'Spf' so CFN updates the values in place, not replacing the record.)
     new route53.TxtRecord(this, 'Spf', {
       zone,
       recordName: DOMAIN,
-      values: ['v=spf1 include:amazonses.com ~all'],
+      values: [
+        'v=spf1 include:amazonses.com ~all',
+        'google-site-verification=bEdN5MsLRKcHmi5xlGSQRal-T7iLtQnR9LKO9EkAvFQ',
+      ],
     });
 
     // DMARC — monitor mode to start; tighten after watching reports.
