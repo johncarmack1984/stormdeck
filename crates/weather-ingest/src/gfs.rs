@@ -23,6 +23,14 @@ pub const TEX_HEIGHT: u32 = NJ as u32;
 /// but the most extreme 10 m winds, which clamp.
 pub const WIND_MS_MAX: f32 = 40.0;
 
+/// Composite-reflectivity (REFC) normalization range (dBZ): the grayscale precip
+/// texture maps [`REFC_DBZ_MIN`, `REFC_DBZ_MAX`] linearly onto a byte, and the web
+/// denormalizes with the same bounds (carried in refctex/latest.json). GFS packs
+/// no-echo at a ~−20 dBZ floor (→ byte 0, which the web renders transparent);
+/// 75 dBZ caps the most extreme convective cells, which clamp.
+pub const REFC_DBZ_MIN: f32 = -20.0;
+pub const REFC_DBZ_MAX: f32 = 75.0;
+
 /// A decoded 0.25° global field, row-major from (90N, 0E).
 pub struct Field {
     values: Vec<f32>,
@@ -89,6 +97,27 @@ pub fn encode_uv_png(u: &Field, v: &Field) -> Result<Vec<u8>> {
         enc.set_depth(png::BitDepth::Eight);
         let mut w = enc.write_header().context("PNG header")?;
         w.write_image_data(&rgb).context("PNG encode")?;
+        w.finish().context("PNG finish")?;
+    }
+    Ok(out)
+}
+
+/// Encode a single scalar field as an equirectangular 8-bit **grayscale** PNG,
+/// each value normalized linearly over `[min, max]` (out-of-range clamps). Same
+/// layout as [`encode_uv_png`] — row 0 is 90°N, column 0 is 0°E (GFS scan order)
+/// — and the web denormalizes with the same bounds (carried in the index JSON).
+/// Used for the REFC precip texture (dBZ over [`REFC_DBZ_MIN`, `REFC_DBZ_MAX`]).
+pub fn encode_scalar_png(field: &Field, min: f32, max: f32) -> Result<Vec<u8>> {
+    let span = (max - min).max(f32::EPSILON);
+    let norm = |x: f32| (((x - min) / span) * 255.0).round().clamp(0.0, 255.0) as u8;
+    let gray: Vec<u8> = field.values.iter().map(|&x| norm(x)).collect();
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, NI as u32, NJ as u32);
+        enc.set_color(png::ColorType::Grayscale);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().context("PNG header")?;
+        w.write_image_data(&gray).context("PNG encode")?;
         w.finish().context("PNG finish")?;
     }
     Ok(out)
@@ -192,6 +221,31 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scalar_png_encodes_grayscale_with_clamped_bounds() {
+        // A full-grid field with a few known values; everything else at the floor.
+        let mut values = vec![REFC_DBZ_MIN; NPTS];
+        values[0] = REFC_DBZ_MIN; // floor → byte 0
+        values[1] = REFC_DBZ_MAX; // ceil → byte 255
+        values[2] = REFC_DBZ_MIN - 100.0; // below range clamps → 0
+        values[3] = REFC_DBZ_MAX + 100.0; // above range clamps → 255
+        values[4] = (REFC_DBZ_MIN + REFC_DBZ_MAX) / 2.0; // midpoint → ~128
+        let png = encode_scalar_png(&Field { values }, REFC_DBZ_MIN, REFC_DBZ_MAX).unwrap();
+
+        // Decode it back: grayscale, native grid dims, and the byte mapping holds.
+        let mut reader = png::Decoder::new(Cursor::new(&png)).read_info().unwrap();
+        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        assert_eq!((info.width, info.height), (NI as u32, NJ as u32));
+        assert_eq!(info.color_type, png::ColorType::Grayscale);
+        assert_eq!((buf[0], buf[1], buf[2], buf[3]), (0, 255, 0, 255));
+        assert!(
+            (i32::from(buf[4]) - 128).abs() <= 1,
+            "midpoint byte was {}",
+            buf[4]
+        );
+    }
 
     #[test]
     fn dates_round_trip() {

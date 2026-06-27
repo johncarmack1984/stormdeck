@@ -46,6 +46,24 @@ export type LatticeForecast = {
   j: number;
 };
 
+/**
+ *  The `refctex/latest.json` pointer: the current snapshot, its forecast-hour
+ *  axis, the equirectangular texture dimensions, and the dBZ bounds the grayscale
+ *  PNG was normalized over (so the web denormalizes identically). The per-step
+ *  textures live at `refctex/{snapshotMs}/{hour}.png` (immutable); the web's
+ *  precipitation layer loads whichever step the timeline is parked on when
+ *  scrubbed into the future (live radar covers "now"). Same axis as windtex and
+ *  citytile, so the one timeline scrubs precip with everything else.
+ */
+export type RefcTexIndex = {
+  snapshotMs: number;
+  hours: number[];
+  width: number;
+  height: number;
+  dbzMin: number;
+  dbzMax: number;
+};
+
 /**  NWS severity, normalized: anything unrecognized becomes `Unknown`. */
 export type Severity = 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
 

@@ -1,7 +1,9 @@
-// The Windy-style colored wind-speed backdrop: a full-world lng/lat grid mesh,
-// each vertex projected through deck's `project32` (so it's mercator-correct at
-// any camera), with the fragment shader sampling the GFS u/v texture and
-// colormapping its speed. Drawn under the particle layer.
+// The GFS precipitation-forecast raster: the same full-world lng/lat mesh as the
+// wind backdrop (projected through deck's `project32`), but the fragment shader
+// samples the single-channel `refctex` dBZ texture, drops everything below a
+// display threshold (clear sky → transparent), and colormaps the rest on the
+// conventional radar scale. Drawn in place of the live radar tiles when the
+// timeline is scrubbed into the future. Mirrors WindRasterLayer.
 
 import {
   Layer,
@@ -15,74 +17,65 @@ import {
   EQUIRECT_RASTER_VS,
   equirectGridMesh,
   loadEquirectTexture,
-  WIND_RAMP_GLSL,
+  REFC_RAMP_GLSL,
 } from './rasterShared';
 
-// std140 UBO (luma v9 has no setUniforms) — bounds to denormalize u/v, the m/s
-// the colormap saturates at, and fill opacity.
+// std140 UBO (luma v9 has no setUniforms): the dBZ bounds to denormalize the
+// texture byte with, and the fill opacity.
 const RASTER_UNIFORM_BLOCK = /* glsl */ `\
-layout(std140) uniform rasterUniforms {
-  float uMin;
-  float uMax;
-  float vMin;
-  float vMax;
-  float colorMax;
+layout(std140) uniform refcUniforms {
+  float dbzMin;
+  float dbzMax;
   float opacity;
 } raster;
 `;
 
 // Typed `any`: luma's ShaderModule generic isn't worth threading for a local UBO.
-const rasterUniforms: any = {
+const refcUniforms: any = {
   name: 'raster',
   vs: RASTER_UNIFORM_BLOCK,
   fs: RASTER_UNIFORM_BLOCK,
   uniformTypes: {
-    uMin: 'f32',
-    uMax: 'f32',
-    vMin: 'f32',
-    vMax: 'f32',
-    colorMax: 'f32',
+    dbzMin: 'f32',
+    dbzMax: 'f32',
     opacity: 'f32',
   },
 };
 
 const FS = /* glsl */ `#version 300 es
-#define SHADER_NAME wind-raster-fragment
+#define SHADER_NAME refc-raster-fragment
 precision highp float;
-uniform sampler2D u_wind;
+uniform sampler2D u_refc;
 in vec2 v_uv;
 out vec4 fragColor;
-${WIND_RAMP_GLSL}
+${REFC_RAMP_GLSL}
 void main() {
-  vec2 n = texture(u_wind, v_uv).rg;
-  vec2 vel = vec2(mix(raster.uMin, raster.uMax, n.x), mix(raster.vMin, raster.vMax, n.y));
-  float speed = length(vel);
-  fragColor = vec4(windRamp(speed / raster.colorMax), raster.opacity);
+  // Grayscale texture: dBZ packed in the red channel over [dbzMin, dbzMax].
+  float dbz = mix(raster.dbzMin, raster.dbzMax, texture(u_refc, v_uv).r);
+  // Clear sky (GFS floors no-echo at ~-20 dBZ) and faint returns fade out; only
+  // real precip (≳ light rain) paints. Fade in across the threshold band so the
+  // echo edges aren't a hard cutoff.
+  float a = smoothstep(8.0, 20.0, dbz) * raster.opacity;
+  if (a <= 0.0) discard;
+  fragColor = vec4(refcRamp(dbz), a);
 }`;
 
-export type WindRasterLayerProps = LayerProps & {
+export type RefcRasterLayerProps = LayerProps & {
   image: string;
-  uMin: number;
-  uMax: number;
-  vMin: number;
-  vMax: number;
-  /** m/s at which the colormap saturates (magenta). */
-  colorMax?: number;
+  dbzMin: number;
+  dbzMax: number;
   opacity?: number;
 };
 
 const defaultProps = {
   image: '',
-  uMin: -40,
-  uMax: 40,
-  vMin: -40,
-  vMax: 40,
-  colorMax: 28,
-  opacity: 0.6,
+  dbzMin: -20,
+  dbzMax: 75,
+  opacity: 0.65,
 };
 
-export class WindRasterLayer extends Layer<WindRasterLayerProps> {
-  static layerName = 'WindRasterLayer';
+export class RefcRasterLayer extends Layer<RefcRasterLayerProps> {
+  static layerName = 'RefcRasterLayer';
   static defaultProps = defaultProps as never;
 
   // Typed `any`: deck's layer state is loosely typed; the GPU resources are local.
@@ -95,7 +88,7 @@ export class WindRasterLayer extends Layer<WindRasterLayerProps> {
       id: `${this.props.id}-mesh`,
       vs: EQUIRECT_RASTER_VS,
       fs: FS,
-      modules: [project32, rasterUniforms],
+      modules: [project32, refcUniforms],
       geometry: new Geometry({
         topology: 'triangle-list',
         vertexCount: mesh.length / 2,
@@ -118,11 +111,11 @@ export class WindRasterLayer extends Layer<WindRasterLayerProps> {
   updateState(params: UpdateParameters<this>): void {
     const { props, oldProps } = params;
     if (props.image && props.image !== oldProps.image) {
-      void this._loadWind(props.image);
+      void this._loadRefc(props.image);
     }
   }
 
-  async _loadWind(url: string): Promise<void> {
+  async _loadRefc(url: string): Promise<void> {
     const tex = await loadEquirectTexture(this.context.device, url).catch(
       () => null,
     );
@@ -130,23 +123,20 @@ export class WindRasterLayer extends Layer<WindRasterLayerProps> {
       tex?.destroy();
       return;
     }
-    this.state.windTexture?.destroy();
-    this.setState({ windTexture: tex });
+    this.state.refcTexture?.destroy();
+    this.setState({ refcTexture: tex });
     this.setNeedsRedraw();
   }
 
   draw(): void {
-    const { model, windTexture } = this.state;
-    if (!windTexture) return;
-    model.setBindings({ u_wind: windTexture });
+    const { model, refcTexture } = this.state;
+    if (!refcTexture) return;
+    model.setBindings({ u_refc: refcTexture });
     model.shaderInputs.setProps({
       raster: {
-        uMin: this.props.uMin,
-        uMax: this.props.uMax,
-        vMin: this.props.vMin,
-        vMax: this.props.vMax,
-        colorMax: this.props.colorMax ?? 28,
-        opacity: this.props.opacity ?? 0.6,
+        dbzMin: this.props.dbzMin,
+        dbzMax: this.props.dbzMax,
+        opacity: this.props.opacity ?? 0.65,
       },
     });
     model.draw(this.context.renderPass);
@@ -154,7 +144,7 @@ export class WindRasterLayer extends Layer<WindRasterLayerProps> {
 
   finalizeState(context: LayerContext): void {
     super.finalizeState(context);
-    this.state.windTexture?.destroy();
+    this.state.refcTexture?.destroy();
     this.state.model?.destroy();
   }
 }

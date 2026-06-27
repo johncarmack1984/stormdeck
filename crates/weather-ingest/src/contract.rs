@@ -179,6 +179,32 @@ pub struct WindTexIndex {
     pub v_max: f32,
 }
 
+/// The `refctex/latest.json` pointer: the current snapshot, its forecast-hour
+/// axis, the equirectangular texture dimensions, and the dBZ bounds the grayscale
+/// PNG was normalized over (so the web denormalizes identically). The per-step
+/// textures live at `refctex/{snapshotMs}/{hour}.png` (immutable); the web's
+/// precipitation layer loads whichever step the timeline is parked on when
+/// scrubbed into the future (live radar covers "now"). Same axis as windtex and
+/// citytile, so the one timeline scrubs precip with everything else.
+#[derive(Serialize)]
+#[cfg_attr(feature = "ts", derive(specta::Type))]
+pub struct RefcTexIndex {
+    #[serde(rename = "snapshotMs")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub snapshot_ms: u64,
+    pub hours: Vec<u32>,
+    pub width: u32,
+    pub height: u32,
+    // Always-present reals; the `Number` override avoids the `number | null`
+    // that a bare f32 exports (same trick as CityForecast::t).
+    #[serde(rename = "dbzMin")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub dbz_min: f32,
+    #[serde(rename = "dbzMax")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub dbz_max: f32,
+}
+
 #[cfg(all(test, feature = "ts"))]
 mod export {
     use specta::Types;
@@ -194,7 +220,8 @@ mod export {
             .register::<super::LatticeForecast>()
             .register::<super::CityForecast>()
             .register::<super::CityTileIndex>()
-            .register::<super::WindTexIndex>();
+            .register::<super::WindTexIndex>()
+            .register::<super::RefcTexIndex>();
         Typescript::default()
             .header("// Generated from crates/weather-ingest/src/contract.rs by `just build types`. Do not edit.\n")
             .export_to(
