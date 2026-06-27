@@ -9,6 +9,7 @@ import {
 import type { FeatureCollection, Geometry, Point } from './generated/geojson';
 import type {
   AlertProps,
+  CapeTexIndex,
   CityTileIndex,
   LatticeForecast,
   RefcTexIndex,
@@ -88,6 +89,11 @@ export const useWindTex = () =>
 export const useRefcTex = () =>
   useFeed<RefcTexIndex>('refctex/latest.json', 600_000);
 
+/** The surface-CAPE texture index (snapshot + forecast hours + J/kg bounds). The
+ * storm-potential overlay loads the per-step PNG nearest the map-wide timeline. */
+export const useCapeTex = () =>
+  useFeed<CapeTexIndex>('capetex/latest.json', 600_000);
+
 /**
  * Latest worldwide radar frame from RainViewer. Falls back to the IEM
  * NEXRAD composite (US only) until — or unless — the API answers.
@@ -136,6 +142,8 @@ export interface WeatherData {
   windTex: WindTexIndex | null;
   /** REFC precip texture index (snapshot + forecast hours + dBZ bounds). */
   refcTex: RefcTexIndex | null;
+  /** Surface-CAPE texture index (snapshot + forecast hours + J/kg bounds). */
+  capeTex: CapeTexIndex | null;
 }
 
 /** One hook, all feeds — keeps the layer registry itself hook-free. The
@@ -148,5 +156,6 @@ export function useWeatherData(): WeatherData {
   const cityTiles = useCityTiles();
   const windTex = useWindTex();
   const refcTex = useRefcTex();
-  return { alerts, radar, lattice, cityTiles, windTex, refcTex };
+  const capeTex = useCapeTex();
+  return { alerts, radar, lattice, cityTiles, windTex, refcTex, capeTex };
 }

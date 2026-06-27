@@ -205,6 +205,31 @@ pub struct RefcTexIndex {
     pub dbz_max: f32,
 }
 
+/// The `capetex/latest.json` pointer: the current snapshot, its forecast-hour
+/// axis, the equirectangular texture dimensions, and the CAPE (J/kg) bounds the
+/// grayscale PNG was normalized over (so the web denormalizes identically). The
+/// per-step textures live at `capetex/{snapshotMs}/{hour}.png` (immutable); the
+/// web's storm-potential overlay loads whichever step the timeline is on. Same
+/// axis as windtex/refctex/citytile, so the one timeline scrubs it with the rest.
+#[derive(Serialize)]
+#[cfg_attr(feature = "ts", derive(specta::Type))]
+pub struct CapeTexIndex {
+    #[serde(rename = "snapshotMs")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub snapshot_ms: u64,
+    pub hours: Vec<u32>,
+    pub width: u32,
+    pub height: u32,
+    // Always-present reals; the `Number` override avoids the `number | null`
+    // that a bare f32 exports (same trick as CityForecast::t).
+    #[serde(rename = "capeMin")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub cape_min: f32,
+    #[serde(rename = "capeMax")]
+    #[cfg_attr(feature = "ts", specta(type = specta_typescript::Number))]
+    pub cape_max: f32,
+}
+
 #[cfg(all(test, feature = "ts"))]
 mod export {
     use specta::Types;
@@ -221,7 +246,8 @@ mod export {
             .register::<super::CityForecast>()
             .register::<super::CityTileIndex>()
             .register::<super::WindTexIndex>()
-            .register::<super::RefcTexIndex>();
+            .register::<super::RefcTexIndex>()
+            .register::<super::CapeTexIndex>();
         Typescript::default()
             .header("// Generated from crates/weather-ingest/src/contract.rs by `just build types`. Do not edit.\n")
             .export_to(

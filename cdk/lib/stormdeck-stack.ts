@@ -55,14 +55,15 @@ export class StormdeckStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      // citytile + windtex + refctex each write a fresh {snapshot}/ tree per
-      // run; expire old snapshots so they don't accumulate. Their latest.json
-      // pointers are rewritten each run, so they stay under the age cutoff and
-      // never age out.
+      // citytile + windtex + refctex + capetex each write a fresh {snapshot}/
+      // tree per run; expire old snapshots so they don't accumulate. Their
+      // latest.json pointers are rewritten each run, so they stay under the age
+      // cutoff and never age out.
       lifecycleRules: [
         { prefix: 'weather/citytile/', expiration: Duration.days(2) },
         { prefix: 'weather/windtex/', expiration: Duration.days(2) },
         { prefix: 'weather/refctex/', expiration: Duration.days(2) },
+        { prefix: 'weather/capetex/', expiration: Duration.days(2) },
       ],
     });
 
@@ -102,12 +103,12 @@ export class StormdeckStack extends Stack {
       manifestPath: CRATES_MANIFEST,
       binaryName: 'weather-ingest',
       architecture: lambda.Architecture.ARM_64,
-      // temp + windtex + refc decode GFS GRIB fields (~4 MB grids, several in
-      // flight; windtex also holds a u/v pair while its PNG encodes); alerts is
-      // lighter.
+      // temp + windtex + refc + cape decode GFS GRIB fields (~4 MB grids,
+      // several in flight; windtex also holds a u/v pair while its PNG encodes);
+      // alerts is lighter.
       memorySize: 512,
       // temp samples ~57 GFS TMP fields (cities + lattice); windtex decodes u/v
-      // pairs and refc single REFC fields into PNGs — all well within 600s.
+      // pairs, refc/cape single REFC/CAPE fields into PNGs — all within 600s.
       timeout: Duration.seconds(600),
       environment: {
         BUCKET: bucket.bucketName,
@@ -298,12 +299,13 @@ export class StormdeckStack extends Stack {
     // EventBridge Scheduler triggers (14M invocations/month free tier). Every
     // weather job is free GFS GRIB from NODD (no per-call limit) plus the public
     // NWS alerts feed, so the cadence is bounded by freshness, not API quotas;
-    // temp + windtex + refc refresh once per GFS cycle window.
+    // temp + windtex + refc + cape refresh once per GFS cycle window.
     const jobs: Array<[string, Duration]> = [
       ['alerts', Duration.minutes(5)],
       ['temp', Duration.hours(6)],
       ['windtex', Duration.hours(6)],
       ['refc', Duration.hours(6)],
+      ['cape', Duration.hours(6)],
     ];
     for (const [job, every] of jobs) {
       new scheduler.Schedule(this, `Schedule-${job}`, {
