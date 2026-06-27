@@ -11,6 +11,7 @@ import type {
   AlertProps,
   CityTileIndex,
   LatticeForecast,
+  RefcTexIndex,
   WindTexIndex,
 } from './generated/weather';
 
@@ -81,6 +82,12 @@ export const useCityTiles = () =>
 export const useWindTex = () =>
   useFeed<WindTexIndex>('windtex/latest.json', 600_000);
 
+/** The REFC precip texture index (snapshot + forecast hours + dBZ bounds). The
+ * precipitation layer loads the per-step PNG nearest the map-wide timeline when
+ * scrubbed into the future. */
+export const useRefcTex = () =>
+  useFeed<RefcTexIndex>('refctex/latest.json', 600_000);
+
 /**
  * Latest worldwide radar frame from RainViewer. Falls back to the IEM
  * NEXRAD composite (US only) until — or unless — the API answers.
@@ -127,6 +134,8 @@ export interface WeatherData {
   cityTiles: CityTileIndex | null;
   /** Wind u/v texture index (snapshot + forecast hours + m/s bounds). */
   windTex: WindTexIndex | null;
+  /** REFC precip texture index (snapshot + forecast hours + dBZ bounds). */
+  refcTex: RefcTexIndex | null;
 }
 
 /** One hook, all feeds — keeps the layer registry itself hook-free. The
@@ -138,5 +147,6 @@ export function useWeatherData(): WeatherData {
   const radar = useRadarTiles();
   const cityTiles = useCityTiles();
   const windTex = useWindTex();
-  return { alerts, radar, lattice, cityTiles, windTex };
+  const refcTex = useRefcTex();
+  return { alerts, radar, lattice, cityTiles, windTex, refcTex };
 }

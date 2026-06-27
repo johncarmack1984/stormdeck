@@ -15,6 +15,14 @@ export function nextStep(t: number, axis: CityTileIndex): number {
   return axis.hours.find((h) => h > t) ?? axis.hours[0];
 }
 
+/** The forecast step (from a texture index's `hours`) nearest the map-wide time
+ * `t` — the step a time-aware raster layer loads when scrubbed. */
+export function nearestStep(hours: number[], t: number): number {
+  return hours.reduce((best, h) =>
+    Math.abs(h - t) < Math.abs(best - t) ? h : best,
+  );
+}
+
 /** Map-wide forecast time control, tethered to the bottom of the panel. Sets a
  * single hour offset every time-aware layer filters to (DataFilterExtension),
  * so it moves the whole map through forecast time on the GPU; Play steps it. */

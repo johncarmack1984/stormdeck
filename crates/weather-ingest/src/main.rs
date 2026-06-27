@@ -3,12 +3,14 @@
 //! Sources:
 //!   - NWS active alerts (api.weather.gov, public domain)
 //!   - NOAA GFS via NODD (public S3, no auth): 2 m temperature as a whole-planet
-//!     lattice + per-city tiles, and 10 m wind as u/v textures — all decoded
-//!     from GRIB2 in `gfs.rs`, so one ~0.9 MB field covers the planet for free.
+//!     lattice + per-city tiles, 10 m wind as u/v textures, and composite
+//!     reflectivity (REFC) as precip textures — all decoded from GRIB2 in
+//!     `gfs.rs`, so one ~0.9 MB field covers the planet for free.
 //!
 //! Runs in two modes:
 //!   - AWS Lambda (AWS_LAMBDA_RUNTIME_API set): writes to s3://$BUCKET/weather/,
-//!     invoked by EventBridge Scheduler with {"job": "alerts" | "temp" | "windtex" | "all"}
+//!     invoked by EventBridge Scheduler with
+//!     {"job": "alerts" | "temp" | "windtex" | "refc" | "all"}
 //!   - CLI (`cargo run -p weather-ingest -- all`): writes to $LOCAL_OUT
 //!     (default web/public/weather/) so `just dev` has live data.
 
@@ -22,8 +24,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 use contract::{
-    AlertProps, CityForecast, CityTile, CityTileIndex, LatticeForecast, Severity, Snapshot,
-    WindTexIndex,
+    AlertProps, CityForecast, CityTile, CityTileIndex, LatticeForecast, RefcTexIndex, Severity,
+    Snapshot, WindTexIndex,
 };
 use lambda_runtime::LambdaEvent;
 use serde::Deserialize;
@@ -396,6 +398,79 @@ async fn fetch_windtex(http: &reqwest::Client, sink: &Sink) -> Result<()> {
     Ok(())
 }
 
+// --- precipitation: composite-reflectivity textures (the forecast precip raster) -
+
+/// Forecast horizon for the REFC precip textures — the same axis as citytile and
+/// windtex, so the one map-wide timeline scrubs precip with everything else.
+const REFCTEX_FHOUR_MAX: u16 = 168; // 7 days
+const REFCTEX_STEP_H: u16 = 3; // 3-hourly
+
+/// Composite-reflectivity (REFC) textures, one per forecast step: an
+/// equirectangular 8-bit grayscale PNG of dBZ normalized over
+/// [`gfs::REFC_DBZ_MIN`, `gfs::REFC_DBZ_MAX`] — the model's depiction of
+/// precipitation that the web colormaps and overlays when the timeline is
+/// scrubbed into the future (live radar stays the truth for "now"). GFS packs
+/// no-echo at a ~−20 dBZ floor, so the clear majority maps to byte 0 (rendered
+/// transparent). Snapshot-addressed like windtex (`refctex/{snapshot}/{fhour}.png`,
+/// immutable) with a short-lived `refctex/latest.json` index carrying the hour
+/// axis, texture dims, and the dBZ bounds the web denormalizes with. One ~0.9 MB
+/// GFS field covers the whole planet, free.
+async fn fetch_refctex(http: &reqwest::Client, sink: &Sink) -> Result<()> {
+    let started = Instant::now();
+    let (date, cyc) = gfs::latest_cycle(now_ms() / 1000);
+    let snapshot_ms = gfs::cycle_ms(&date, cyc)?;
+    let fhours: Vec<u16> = (0..=REFCTEX_FHOUR_MAX)
+        .step_by(REFCTEX_STEP_H as usize)
+        .collect();
+
+    // One ~1M-point f32 grid resident per in-flight step while its PNG encodes;
+    // cap concurrency so peak memory stays well under the function's 512 MB.
+    const CONC: usize = 6;
+    for chunk in fhours.chunks(CONC) {
+        let mut set = tokio::task::JoinSet::new();
+        for &fh in chunk {
+            let (http, date) = (http.clone(), date.clone());
+            set.spawn(async move {
+                let field =
+                    gfs::fetch_field(&http, &date, cyc, fh, "REFC", "entire atmosphere").await?;
+                anyhow::Ok((
+                    fh,
+                    gfs::encode_scalar_png(&field, gfs::REFC_DBZ_MIN, gfs::REFC_DBZ_MAX)?,
+                ))
+            });
+        }
+        while let Some(res) = set.join_next().await {
+            let (fh, png) = res??;
+            sink.publish_bytes(
+                &format!("refctex/{snapshot_ms}/{fh}.png"),
+                png,
+                "image/png",
+                31_536_000,
+            )
+            .await?;
+        }
+    }
+
+    let index = RefcTexIndex {
+        snapshot_ms,
+        hours: fhours.iter().map(|&f| u32::from(f)).collect(),
+        width: gfs::TEX_WIDTH,
+        height: gfs::TEX_HEIGHT,
+        dbz_min: gfs::REFC_DBZ_MIN,
+        dbz_max: gfs::REFC_DBZ_MAX,
+    };
+    sink.publish("refctex/latest.json", &serde_json::to_value(index)?, 300)
+        .await?;
+    info!(
+        "refctex: {} steps → PNGs ({}×{}, GFS {date}/{cyc:02}z) in {:.1?}",
+        fhours.len(),
+        gfs::TEX_WIDTH,
+        gfs::TEX_HEIGHT,
+        started.elapsed()
+    );
+    Ok(())
+}
+
 #[derive(Clone)]
 enum Sink {
     S3(s3::S3Writer),
@@ -461,8 +536,12 @@ async fn run_job(job: &str, cfg: &Config, http: &reqwest::Client, sink: &Sink) -
         fetch_windtex(http, sink).await?;
         done.push("windtex");
     }
+    if matches!(job, "refc" | "all") {
+        fetch_refctex(http, sink).await?;
+        done.push("refc");
+    }
     if done.is_empty() {
-        bail!("unknown job '{job}' (expected alerts | temp | windtex | all)");
+        bail!("unknown job '{job}' (expected alerts | temp | windtex | refc | all)");
     }
     Ok(json!({ "ok": true, "jobs": done }))
 }

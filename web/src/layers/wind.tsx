@@ -2,17 +2,11 @@ import { WindLayer } from 'deck-wind-layer';
 import { Slider } from '@/components/ui/slider';
 import { WEATHER_BASE } from '../config';
 import type { WindTexIndex } from '../generated/weather';
+import { nearestStep } from '../Timeline';
 import { age } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 import { WindRasterLayer } from './windRasterLayer';
-
-/** The forecast step nearest the map-wide time (steps are 3h apart). */
-function nearestStep(hours: number[], t: number): number {
-  return hours.reduce((best, h) =>
-    Math.abs(h - t) < Math.abs(best - t) ? h : best,
-  );
-}
 
 /**
  * Windy-style wind: a colored wind-speed raster (`WindRasterLayer`) under

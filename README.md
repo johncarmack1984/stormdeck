@@ -6,9 +6,9 @@
 
 Live weather on a deck.gl map, served almost entirely from free tiers: the whole bill is thirteen dollars a year of vanity domain plus a few cents a month for Route 53 and SES email.
 
-OpenStreetMap basemap tiles come from [martin](https://github.com/maplibre/martin) running **inside AWS Lambda**, reading [PMTiles](https://docs.protomaps.com/pmtiles/) extracts straight from a private S3 bucket. A scheduled Rust lambda ([cargo-lambda](https://www.cargo-lambda.info/)) snapshots US-wide NWS alerts and decodes NOAA GFS GRIB2 straight from NOAA's open-data S3 bucket into global 2 m temperatures (a planet-wide lattice when zoomed out, per-city point forecasts when zoomed in) plus animated global wind (city list from GeoNames). Radar is RainViewer's global composite (IEM NEXRAD as fallback). The web app is React + deck.gl + MapLibre, served from the same CloudFront distribution as the tiles and weather: one origin, no CORS, hashed assets cached immutable at the edge. Map views mirror into the URL hash, so any view is a link.
+OpenStreetMap basemap tiles come from [martin](https://github.com/maplibre/martin) running **inside AWS Lambda**, reading [PMTiles](https://docs.protomaps.com/pmtiles/) extracts straight from a private S3 bucket. A scheduled Rust lambda ([cargo-lambda](https://www.cargo-lambda.info/)) snapshots US-wide NWS alerts and decodes NOAA GFS GRIB2 straight from NOAA's open-data S3 bucket into global 2 m temperatures (a planet-wide lattice when zoomed out, per-city point forecasts when zoomed in), animated global wind, and a global precipitation forecast (GFS composite reflectivity) — city list from GeoNames. Precipitation shows the live RainViewer global radar composite (IEM NEXRAD as fallback) while the timeline is parked at *now*, then swaps to the GFS forecast raster as you scrub forward, so the whole map moves on one timeline. The web app is React + deck.gl + MapLibre, served from the same CloudFront distribution as the tiles and weather: one origin, no CORS, hashed assets cached immutable at the edge. Map views mirror into the URL hash, so any view is a link.
 
-> **Not an official weather source.** This is a hobby map on shoestring infrastructure: alerts refresh on a schedule, radar lags by several minutes, zone-based NWS alerts (no polygon geometry) are not shown, and any piece can fail silently with no on-map indication. For decisions involving life or property, use [weather.gov](https://www.weather.gov/) and local emergency guidance.
+> **Not an official weather source.** This is a hobby map on shoestring infrastructure: alerts refresh on a schedule, live radar lags by several minutes, the forecast precipitation is coarse 0.25° model output (it smooths over individual cells), zone-based NWS alerts (no polygon geometry) are not shown, and any piece can fail silently with no on-map indication. For decisions involving life or property, use [weather.gov](https://www.weather.gov/) and local emergency guidance.
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,7 @@ flowchart LR
     sched -->|"invokes"| ingest
     nws --> ingest
     gfs --> ingest
-    ingest -->|"PUT JSON + wind PNG"| bucket
+    ingest -->|"PUT JSON + wind/precip PNGs"| bucket
 ```
 
 ## What it costs
@@ -137,17 +137,17 @@ One piece lives outside CloudFormation: the stormdeck.live certificate was reque
 | World context detail | `WORLD_MAXZOOM` env for `just tiles extract` | z0-6 |
 | Schedules | `cdk/lib/stormdeck-stack.ts` | alerts 5 min, temp 6 h, windtex 6 h |
 
-The `bbox` sets the full-detail basemap region; outside it the map shows the coarse world tiles. Temperature and wind are global (GFS), so they ignore it.
+The `bbox` sets the full-detail basemap region; outside it the map shows the coarse world tiles. Temperature, wind, and the precipitation forecast are global (GFS), so they ignore it.
 
 ## Notes
 
 - **martin-in-Lambda**: martin ≥ v0.14 detects `AWS_LAMBDA_RUNTIME_API` and serves Lambda events natively. The zip is just the upstream `aarch64-musl` binary plus a two-line `bootstrap`. The function URL is IAM-auth; only CloudFront (OAC SigV4) may invoke it.
 - **No aws-sdk in the ingester**: it only PUTs a handful of small objects, JSON snapshots plus the GFS wind PNGs, so it signs the request itself (SigV4, ~80 lines, test vector included). As of June 2026 the SDK also doesn't compile (aws-runtime 1.7.4 vs aws-smithy-runtime-api 1.12.3 skew). Check back later if you need more S3 surface.
 - **Zone-based NWS alerts** (no polygon geometry) are dropped; rendering them would mean shipping zone shapefiles. Counted in the lambda logs.
-- **GFS straight from GRIB2**: every temperature and the wind come from NOAA GFS with no per-point API metering: the ingester pulls 0.25° UGRD/VGRD/TMP fields from NOAA's public `noaa-gfs-bdp-pds` S3 bucket and decodes the GRIB2 itself, so one ~0.9 MB field covers the whole planet (1440×721) and any number of points sample for free. One pass writes a whole-planet `lattice.json` (the zoomed-out grid) plus per-city tiles (zoomed in), sampled from the same TMP fields, so the grid costs no extra fetches, and the wind u/v PNGs (±40 m/s). All carry the model run's snapshot so a new run refetches cleanly, and all share one forecast-hour axis so the timeline scrubs grid, cities, and wind together.
+- **GFS straight from GRIB2**: temperature, wind, and the precipitation forecast all come from NOAA GFS with no per-point API metering: the ingester pulls 0.25° UGRD/VGRD/TMP/REFC fields from NOAA's public `noaa-gfs-bdp-pds` S3 bucket and decodes the GRIB2 itself, so one ~0.9 MB field covers the whole planet (1440×721) and any number of points sample for free. One pass writes a whole-planet `lattice.json` (the zoomed-out grid) plus per-city tiles (zoomed in), sampled from the same TMP fields, so the grid costs no extra fetches; the wind u/v PNGs (±40 m/s); and the precipitation PNGs (composite reflectivity, a grayscale dBZ texture over −20…75 dBZ — GFS floors clear sky at ~−20 dBZ, so the web renders that transparent). All carry the model run's snapshot so a new run refetches cleanly, and all share one forecast-hour axis so the timeline scrubs grid, cities, wind, and precipitation together.
 
 ## Attribution
 
-Map data © [OpenStreetMap](https://openstreetmap.org/copyright) contributors, tiles via [Protomaps](https://protomaps.com) builds (ODbL). Radar: [RainViewer](https://www.rainviewer.com/) global composite (free tier, attribution required), falling back to NOAA NEXRAD via the [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/). Alerts: [National Weather Service](https://www.weather.gov/) (public domain). Temperatures and wind: [NOAA GFS](https://registry.opendata.aws/noaa-gfs-bdp-pds/) via NOAA Open Data Dissemination (public domain). City list: [GeoNames](https://www.geonames.org/) (CC-BY 4.0).
+Map data © [OpenStreetMap](https://openstreetmap.org/copyright) contributors, tiles via [Protomaps](https://protomaps.com) builds (ODbL). Radar: [RainViewer](https://www.rainviewer.com/) global composite (free tier, attribution required), falling back to NOAA NEXRAD via the [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/). Alerts: [National Weather Service](https://www.weather.gov/) (public domain). Temperatures, wind, and the precipitation forecast (composite reflectivity): [NOAA GFS](https://registry.opendata.aws/noaa-gfs-bdp-pds/) via NOAA Open Data Dissemination (public domain). City list: [GeoNames](https://www.geonames.org/) (CC-BY 4.0).
 
 MIT.
