@@ -42,9 +42,18 @@ struct Config {
 
 impl Config {
     fn from_env() -> Result<Self> {
-        Ok(Self {
-            nws_area: std::env::var("NWS_AREA").unwrap_or_default(),
-        })
+        let nws_area = std::env::var("NWS_AREA").unwrap_or_default();
+        // This goes straight into the alerts query string; constrain it to NWS
+        // area codes (comma-separated 2-letter, e.g. "TX,OK") so nothing else can
+        // be injected into the URL.
+        if !nws_area.is_empty()
+            && !nws_area
+                .split(',')
+                .all(|c| c.len() == 2 && c.bytes().all(|b| b.is_ascii_uppercase()))
+        {
+            bail!("NWS_AREA must be comma-separated 2-letter codes (e.g. TX,OK), got {nws_area:?}");
+        }
+        Ok(Self { nws_area })
     }
 }
 
@@ -290,18 +299,9 @@ async fn fetch_temps(http: &reqwest::Client, sink: &Sink) -> Result<()> {
             res??;
         }
     }
-    let index = CityTileIndex {
-        snapshot_ms,
-        hours: hours.clone(),
-        min_zoom: CITYTILE_MIN_Z,
-        max_zoom: CITYTILE_MAX_Z,
-    };
-    sink.publish("citytile/latest.json", &serde_json::to_value(index)?, 300)
-        .await?;
-
     // Whole-planet lattice (zoomed out) as a single file — same snapshot + hours
     // as the tiles, so the timeline stays in lockstep. `i`/`j` let the web thin
-    // the grid at low zoom.
+    // the grid at low zoom. Written before the latest.json pointer below.
     let lattice_count = lattice.len();
     let lattice_feats: Vec<Feature<Point, LatticeForecast>> = lattice
         .into_iter()
@@ -317,8 +317,21 @@ async fn fetch_temps(http: &reqwest::Client, sink: &Sink) -> Result<()> {
             )
         })
         .collect();
-    let lattice_body = serde_json::to_value(CityTile::new(snapshot_ms, hours, lattice_feats))?;
+    let lattice_body =
+        serde_json::to_value(CityTile::new(snapshot_ms, hours.clone(), lattice_feats))?;
     sink.publish("lattice.json", &lattice_body, 3600).await?;
+
+    // The latest.json pointer commits the snapshot, so write it LAST — after the
+    // immutable tiles and the lattice — and a consumer that reads it never races
+    // a not-yet-written artifact.
+    let index = CityTileIndex {
+        snapshot_ms,
+        hours,
+        min_zoom: CITYTILE_MIN_Z,
+        max_zoom: CITYTILE_MAX_Z,
+    };
+    sink.publish("citytile/latest.json", &serde_json::to_value(index)?, 300)
+        .await?;
 
     info!(
         "temps: {} cities → {tile_count} tiles (z{CITYTILE_MIN_Z}-{CITYTILE_MAX_Z}) + {lattice_count} lattice points in {:.1?}",
