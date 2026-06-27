@@ -10,6 +10,7 @@ import type { FeatureCollection, Geometry, Point } from './generated/geojson';
 import type {
   AlertProps,
   CapeTexIndex,
+  CityForecast,
   CityTileIndex,
   LatticeForecast,
   RefcTexIndex,
@@ -33,6 +34,17 @@ export type WeatherFc<G, P> = FeatureCollection<G, P> & {
  * snapshot + hour axis it was sampled on — the same envelope as a city tile,
  * but global and untiled. */
 export type LatticeFc = FeatureCollection<Point, LatticeForecast> & {
+  snapshotMs: number;
+  hours: number[];
+};
+
+/** A single point-forecast city tile (the `citytile/{snapshotMs}/{z}/{x}/{y}`
+ * pyramid): a FeatureCollection of GFS-sampled cities, each carrying a
+ * temperature series, plus the snapshot + hour axis. Same envelope as the
+ * lattice, but per-tile rather than global — and built from the generated
+ * `CityForecast`/`Point` so it tracks the Rust contract instead of being
+ * hand-declared at the use site. */
+export type CityTileFc = FeatureCollection<Point, CityForecast> & {
   snapshotMs: number;
   hours: number[];
 };

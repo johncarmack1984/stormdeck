@@ -44,3 +44,18 @@ export interface WeatherLayer<D = unknown> {
   /** Optional tooltip for a picked object belonging to this layer. */
   tooltip?: (object: any) => string | null;
 }
+
+/**
+ * Register a layer into the registry, erasing its data type to `unknown`.
+ *
+ * `WeatherLayer<D>` is invariant in `D` (it both produces `D` via `select` and
+ * consumes it via `build`), so a `WeatherLayer<SpecificData>` is not directly
+ * assignable to a shared `WeatherLayer<unknown>[]`. This helper type-checks each
+ * layer as its own `WeatherLayer<D>` (so `select`→`build` stays sound per layer)
+ * and erases only the registry's view — far tighter than typing the array
+ * `WeatherLayer<any>[]`, which would accept a malformed layer. `App` only ever
+ * pairs a layer's own `select` with its own `build`, so the erasure is safe.
+ */
+export function defineLayer<D>(layer: WeatherLayer<D>): WeatherLayer<unknown> {
+  return layer as WeatherLayer<unknown>;
+}

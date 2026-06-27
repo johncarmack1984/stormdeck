@@ -6,8 +6,8 @@ import {
 import { TileLayer } from '@deck.gl/geo-layers';
 import { TextLayer } from '@deck.gl/layers';
 import { GRID_ZOOM_SPLIT, WEATHER_BASE } from '../config';
-import type { CityForecast, CityTileIndex } from '../generated/weather';
-import { age, type LatticeFc } from '../weather';
+import type { CityTileIndex } from '../generated/weather';
+import { age, type CityTileFc, type LatticeFc } from '../weather';
 import { Swatch } from './swatch';
 import type { WeatherLayer } from './types';
 
@@ -47,20 +47,12 @@ interface TempData {
   lattice: LatticeFc | null;
 }
 
-interface CityTile {
-  hours: number[];
-  features: {
-    geometry: { coordinates: [number, number] };
-    properties: CityForecast;
-  }[];
-}
-
 /** Flatten a city tile into one record per (city, forecast hour). */
-function explodeCities(tile: CityTile | null): TempRecord[] {
+function explodeCities(tile: CityTileFc | null): TempRecord[] {
   if (!tile) return [];
   const out: TempRecord[] = [];
   for (const f of tile.features) {
-    const position = f.geometry.coordinates;
+    const position = f.geometry.coordinates as [number, number];
     const { name, t } = f.properties;
     for (let k = 0; k < t.length; k++) {
       out.push({ position, hour: tile.hours[k], temp: t[k], name });
