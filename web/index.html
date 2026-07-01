@@ -3,15 +3,119 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Live weather over OpenStreetMap — deck.gl + martin" />
+    <title>stormdeck — live weather radar, alerts & wind map</title>
+    <meta
+      name="description"
+      content="Free live weather map: real-time US radar, NWS severe weather alerts, and global wind, temperature, precipitation and storm forecasts on one timeline."
+    />
+    <link rel="canonical" href="https://stormdeck.live/" />
+    <meta name="theme-color" content="#0b0d10" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛈️</text></svg>"
     />
-    <title>stormdeck</title>
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="stormdeck" />
+    <meta property="og:title" content="stormdeck — live weather radar, alerts & wind map" />
+    <meta
+      property="og:description"
+      content="Free live weather map: real-time US radar, NWS severe weather alerts, and global wind, temperature, precipitation and storm forecasts on one timeline."
+    />
+    <meta property="og:url" content="https://stormdeck.live/" />
+    <meta property="og:image" content="https://stormdeck.live/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Live weather radar, wind flow, and NWS alerts over a map of the United States"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="stormdeck — live weather radar, alerts & wind map" />
+    <meta
+      name="twitter:description"
+      content="Free live weather map: real-time US radar, NWS severe weather alerts, and global wind, temperature, precipitation and storm forecasts on one timeline."
+    />
+    <meta name="twitter:image" content="https://stormdeck.live/og.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "stormdeck",
+        "alternateName": "stormdeck.live",
+        "url": "https://stormdeck.live/",
+        "description": "Free, open-source live weather map: real-time US radar, NWS severe weather alerts, and global GFS wind, temperature, precipitation and storm-potential forecasts on one timeline.",
+        "applicationCategory": "Weather",
+        "operatingSystem": "Any (web browser)",
+        "browserRequirements": "Requires JavaScript and WebGL",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "screenshot": "https://stormdeck.live/og.png",
+        "image": "https://stormdeck.live/og.png",
+        "creator": {
+          "@type": "Person",
+          "name": "John Carmack",
+          "url": "https://johncarmack.com/",
+          "sameAs": ["https://github.com/johncarmack1984"]
+        },
+        "sameAs": ["https://github.com/johncarmack1984/stormdeck"],
+        "license": "https://github.com/johncarmack1984/stormdeck/blob/main/LICENSE"
+      }
+    </script>
   </head>
   <body class="h-full">
-    <div id="root" class="h-full"></div>
+    <div id="root" class="h-full">
+      <!-- Static shell: real content for crawlers and LLM answer engines (the
+           served HTML is otherwise an empty SPA mount), and the loading state
+           for people. React replaces it when the map mounts, so it must stay
+           self-contained: inline styles only (the bundled CSS arrives with the
+           JS that removes it). -->
+      <div
+        style="
+          min-height: 100%;
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 24px;
+          background: #0b0d10;
+          color: #d9dee5;
+          font: 15px/1.65 system-ui, -apple-system, 'Segoe UI', sans-serif;
+        "
+      >
+        <main style="max-width: 620px">
+          <h1 style="margin: 0 0 12px; font-size: 24px; line-height: 1.3; color: #fff">
+            stormdeck ⛈️ live weather radar, alerts &amp; wind on one map
+          </h1>
+          <p style="margin: 0 0 12px">
+            stormdeck is a free, open-source live weather map. It shows real-time United
+            States radar (RainViewer, with NOAA NEXRAD via IEM as fallback), live National
+            Weather Service severe weather alerts, and global NOAA GFS forecasts —
+            temperature, animated wind, precipitation, and thunderstorm potential — all on
+            one scrubbable timeline.
+          </p>
+          <ul style="margin: 0 0 12px; padding-left: 20px">
+            <li>Live weather radar with a scrubbable forecast timeline</li>
+            <li>Severe weather alerts across the United States (NWS)</li>
+            <li>Animated global wind map</li>
+            <li>Global temperature and precipitation forecasts (NOAA GFS)</li>
+            <li>Storm potential overlay (surface CAPE)</li>
+          </ul>
+          <p style="margin: 0 0 12px">
+            Built with <a href="https://deck.gl" style="color: #8ab8ff">deck.gl</a> and
+            MapLibre over OpenStreetMap, served from near-free-tier AWS.
+            <a href="https://github.com/johncarmack1984/stormdeck" style="color: #8ab8ff"
+              >Open source (MIT) on GitHub</a
+            >, by
+            <a href="https://johncarmack.com" style="color: #8ab8ff">John Carmack</a>. Not an
+            official weather source — for decisions involving life or property, use
+            <a href="https://www.weather.gov/" style="color: #8ab8ff">weather.gov</a>.
+          </p>
+          <p style="margin: 0; color: #8b93a1">Loading the interactive map…</p>
+        </main>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,0 +1,12 @@
+# stormdeck.live — everything is crawlable. LLM search/answer bots are
+# explicitly welcome so stormdeck can be found and cited.
+User-agent: *
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+Sitemap: https://stormdeck.live/sitemap.xml
