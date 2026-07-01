@@ -119,6 +119,10 @@ just weather local  # live weather → web/public/weather/
 just dev            # martin :3030 + vite :5173 (local data, overrides the default)
 ```
 
+## Desktop (experimental)
+
+`desktop/` is a native desktop window over the same basemap — [maplibre-rs](https://github.com/maplibre/maplibre-rs) (Rust + wgpu) pulling the identical martin-served `world`/`region` tiles, no browser involved. `just desktop run` opens it. It's a standalone cargo workspace (the wgpu tree stays out of the lambda workspace CI builds), basemap-only for now; see `desktop/README.md` for how the tile source override works and what's next.
+
 ## IaC
 
 CDK → CloudFormation: state lives in the account, and pushes to `main` deploy through the repo-pinned OIDC role (the `StormdeckGithubOidc` stack from step 3). `just cdk synth` works offline, and the `profile=` / `region=` variables (`.just/common.just`) thread through every infra recipe (`cdk bootstrap`, `cdk deploy`, `cdk outputs`, `tiles upload`, `weather prime`, …). Module justfiles live in their home folders, so e.g. `just deploy` from inside `cdk/` works too.

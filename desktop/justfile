@@ -1,0 +1,15 @@
+# stormdeck-desktop — native map window (maplibre-rs). Recipes run from
+# this folder; `just` works directly inside desktop/ too.
+
+# Open the desktop map window
+run:
+    cargo run
+
+# Run against a local martin (just dev serves :3030)
+run-local:
+    STORMDECK_TILE_BASE=http://localhost:3030 cargo run
+
+# Lint (not wired into CI yet — standalone workspace)
+check:
+    cargo fmt --all -- --check
+    cargo clippy -- -D warnings
