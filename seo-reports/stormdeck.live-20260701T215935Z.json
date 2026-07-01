@@ -1,0 +1,383 @@
+{
+  "surface": {
+    "id": "stormdeck.live",
+    "url": "https://stormdeck.live",
+    "kind": "site",
+    "gsc_property": null,
+    "github_repo": "johncarmack1984/stormdeck",
+    "positioning": "stormdeck.live is a free, open-source (MIT) live weather map: real-time US radar and NWS severe-weather alerts plus global GFS forecasts (temperature, animated wind, precipitation, storm potential) scrubbed on one timeline, built with deck.gl + MapLibre and served from near-free-tier AWS.",
+    "seed_keywords": [
+      "live weather radar map",
+      "live wind map",
+      "animated wind map",
+      "weather alerts map",
+      "global weather forecast map",
+      "gfs model viewer",
+      "open source weather map",
+      "deck.gl weather map"
+    ],
+    "surface_markers": [
+      "stormdeck.live",
+      "stormdeck",
+      "deck.gl",
+      "johncarmack1984"
+    ],
+    "namesake_markers": [
+      "Stream Deck",
+      "Elgato",
+      "Magic: The Gathering",
+      "storm combo deck",
+      "id Software",
+      "Doom",
+      "Quake",
+      "Oculus"
+    ],
+    "geo_probes": [
+      "What is stormdeck.live and what does it show?",
+      "Who built stormdeck, the live weather map, and what is it built with?",
+      "What are some free websites that show live weather radar and severe weather alerts on a map?",
+      "Are there open-source weather maps built with deck.gl?"
+    ],
+    "cite_domains": [
+      "stormdeck.live"
+    ]
+  },
+  "results": [
+    {
+      "provider": "crawl",
+      "tier": 0,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "final_url",
+          "value": "https://stormdeck.live",
+          "note": ""
+        },
+        {
+          "key": "status",
+          "value": 200,
+          "note": ""
+        },
+        {
+          "key": "title",
+          "value": "stormdeck",
+          "note": ""
+        },
+        {
+          "key": "title_len",
+          "value": 9,
+          "note": ""
+        },
+        {
+          "key": "meta_description",
+          "value": "Live weather over OpenStreetMap \u2014 deck.gl + martin",
+          "note": ""
+        },
+        {
+          "key": "canonical",
+          "value": null,
+          "note": ""
+        },
+        {
+          "key": "html_lang",
+          "value": "en",
+          "note": ""
+        },
+        {
+          "key": "og_tags",
+          "value": 0,
+          "note": ""
+        },
+        {
+          "key": "twitter_tags",
+          "value": 0,
+          "note": ""
+        },
+        {
+          "key": "h1_raw",
+          "value": [],
+          "note": ""
+        },
+        {
+          "key": "raw_html_words",
+          "value": 1,
+          "note": ""
+        },
+        {
+          "key": "jsonld_types_raw",
+          "value": [],
+          "note": ""
+        },
+        {
+          "key": "rendered",
+          "value": "skipped (install 'render' extra for the JS-gap)",
+          "note": ""
+        },
+        {
+          "key": "robots_txt",
+          "value": "403",
+          "note": ""
+        },
+        {
+          "key": "sitemap_xml",
+          "value": "403",
+          "note": ""
+        }
+      ],
+      "findings": [
+        {
+          "severity": "low",
+          "code": "title.length",
+          "message": "Title is 9 chars (aim 15-65)."
+        },
+        {
+          "severity": "low",
+          "code": "canonical.missing",
+          "message": "No rel=canonical link."
+        },
+        {
+          "severity": "high",
+          "code": "schema.missing",
+          "message": "No JSON-LD structured data in server HTML (no Person/ProfilePage entity for Google or LLMs)."
+        },
+        {
+          "severity": "high",
+          "code": "render.thin_shell",
+          "message": "Server HTML has only 1 words of text - looks like an unprerendered SPA shell (install the 'render' extra to quantify the JS-gap precisely)."
+        },
+        {
+          "severity": "medium",
+          "code": "sitemap.missing",
+          "message": "No /sitemap.xml (200)."
+        }
+      ],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "psi",
+      "tier": 0,
+      "status": "error",
+      "signals": [],
+      "findings": [],
+      "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https%3A%2F%2Fstormdeck.live&key=REDACTED&strategy=mobile&category=PERFORMANCE'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "gsc",
+      "tier": 0,
+      "status": "skipped",
+      "signals": [],
+      "findings": [
+        {
+          "severity": "low",
+          "code": "gsc.no_property",
+          "message": "surface has no gsc_property set."
+        }
+      ],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "github",
+      "tier": 0,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "description",
+          "value": "Live weather on a deck.gl map, served from AWS free tiers",
+          "note": ""
+        },
+        {
+          "key": "topics",
+          "value": [],
+          "note": ""
+        },
+        {
+          "key": "stars",
+          "value": 0,
+          "note": ""
+        },
+        {
+          "key": "homepage",
+          "value": "https://stormdeck.live",
+          "note": ""
+        },
+        {
+          "key": "views_14d",
+          "value": 2,
+          "note": ""
+        },
+        {
+          "key": "uniques_14d",
+          "value": 1,
+          "note": ""
+        }
+      ],
+      "findings": [
+        {
+          "severity": "medium",
+          "code": "github.no_topics",
+          "message": "repo has no topics (GitHub search keywords - add your niche terms)."
+        }
+      ],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "bing",
+      "tier": 0,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "bing",
+          "value": "HTTP 400",
+          "note": ""
+        }
+      ],
+      "findings": [
+        {
+          "severity": "low",
+          "code": "bing.error",
+          "message": "Bing API returned 400 (is the site verified for this key?)."
+        }
+      ],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "trends",
+      "tier": 0,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "avg_interest_12m",
+          "value": [
+            "live wind map: 46.0",
+            "live weather radar map: 36.3",
+            "weather alerts map: 18.1",
+            "global weather forecast map: 13.5",
+            "animated wind map: 0.1"
+          ],
+          "note": "0-100 relative"
+        }
+      ],
+      "findings": [],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "dataforseo",
+      "tier": 1,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "keyword_volumes",
+          "value": [
+            "live weather radar map: 2900/mo (comp=LOW, cpc=1.06)",
+            "weather alerts map: 1900/mo (comp=LOW, cpc=1.2)",
+            "live wind map: 720/mo (comp=LOW, cpc=0.22)",
+            "animated wind map: 30/mo (comp=LOW, cpc=None)",
+            "global weather forecast map: 10/mo (comp=LOW, cpc=None)",
+            "gfs model viewer: 0/mo (comp=None, cpc=None)",
+            "open source weather map: 0/mo (comp=None, cpc=None)",
+            "deck.gl weather map: 0/mo (comp=None, cpc=None)"
+          ],
+          "note": ""
+        },
+        {
+          "key": "api_cost_usd",
+          "value": 0.09,
+          "note": ""
+        }
+      ],
+      "findings": [
+        {
+          "severity": "low",
+          "code": "dataforseo.zero_volume",
+          "message": "3 seed terms show ~0 volume: gfs model viewer, open source weather map, deck.gl weather map"
+        }
+      ],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "serper",
+      "tier": 1,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "serp_positions",
+          "value": [
+            "live weather radar map: not in top 10",
+            "live wind map: not in top 10",
+            "animated wind map: not in top 9",
+            "weather alerts map: not in top 10",
+            "global weather forecast map: not in top 9",
+            "gfs model viewer: not in top 10",
+            "open source weather map: not in top 10",
+            "deck.gl weather map: not in top 10"
+          ],
+          "note": ""
+        }
+      ],
+      "findings": [
+        {
+          "severity": "medium",
+          "code": "serper.unranked",
+          "message": "stormdeck.live ranks for none of the seed keywords (expected for a new/niche personal site; this is the baseline to move)."
+        }
+      ],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    },
+    {
+      "provider": "geo_probe",
+      "tier": 2,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "perplexity",
+          "value": "surfaced 3/4, conflated 0, cited 0",
+          "note": "[What is stormdeck.live and what do...] surfaced; [Who built stormdeck, the live weat...] surfaced; [What are some free websites that s...] absent; [Are there open-source weather maps...] surfaced"
+        },
+        {
+          "key": "openai",
+          "value": "surfaced 3/4, conflated 0, cited 0",
+          "note": "[What is stormdeck.live and what do...] surfaced; [Who built stormdeck, the live weat...] surfaced; [What are some free websites that s...] absent; [Are there open-source weather maps...] surfaced"
+        },
+        {
+          "key": "anthropic",
+          "value": "surfaced 3/4, conflated 0, cited 0",
+          "note": "[What is stormdeck.live and what do...] surfaced; [Who built stormdeck, the live weat...] surfaced; [What are some free websites that s...] absent; [Are there open-source weather maps...] surfaced"
+        },
+        {
+          "key": "gemini",
+          "value": "surfaced 3/4, conflated 0, cited 0",
+          "note": "[What is stormdeck.live and what do...] surfaced; [Who built stormdeck, the live weat...] surfaced; [What are some free websites that s...] absent; [Are there open-source weather maps...] surfaced"
+        }
+      ],
+      "findings": [],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    }
+  ]
+}

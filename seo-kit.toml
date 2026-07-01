@@ -1,0 +1,50 @@
+# seo-kit per-repo config (scaffolded by `seo-kit setup`).
+# This file makes the repo a saved surface: `seo-kit audit stormdeck.live` runs the
+# full configured provider set from any directory inside the repo and writes
+# reports to reports_dir below (committed reports give you the trend history the
+# Measure phase needs). Secrets and provider enablement stay in the seo-kit tool
+# home — this file is safe to commit. Add more [[surface]] blocks as needed.
+
+[seokit]
+reports_dir = "seo-reports"
+
+[[surface]]
+id = "stormdeck.live"
+url = "https://stormdeck.live"
+kind = "site"
+# gsc_property = "sc-domain:stormdeck.live"  # Search Console queries; uncomment once the property is verified
+github_repo = "johncarmack1984/stormdeck"  # GitHub repo topics / description / traffic signals
+positioning = "stormdeck.live is a free, open-source (MIT) live weather map: real-time US radar and NWS severe-weather alerts plus global GFS forecasts (temperature, animated wind, precipitation, storm potential) scrubbed on one timeline, built with deck.gl + MapLibre and served from near-free-tier AWS."
+seed_keywords = [
+    "live weather radar map",
+    "live wind map",
+    "animated wind map",
+    "weather alerts map",
+    "global weather forecast map",
+    "gfs model viewer",
+    "open source weather map",
+    "deck.gl weather map",
+]
+
+# GEO probe (LLM citation + namesake disambiguation). The name has two drift
+# modes: product drift (Elgato Stream Deck hardware, Magic: The Gathering
+# "storm deck" archetype) and creator drift (the id Software John Carmack —
+# different person from this repo's author).
+surface_markers = ["stormdeck.live", "stormdeck", "deck.gl", "johncarmack1984"]
+namesake_markers = [
+    "Stream Deck",
+    "Elgato",
+    "Magic: The Gathering",
+    "storm combo deck",
+    "id Software",
+    "Doom",
+    "Quake",
+    "Oculus",
+]
+cite_domains = ["stormdeck.live"]  # the GitHub repo is the other citable home, but domain-matching github.com would false-positive on unrelated repos
+geo_probes = [
+    "What is stormdeck.live and what does it show?",
+    "Who built stormdeck, the live weather map, and what is it built with?",
+    "What are some free websites that show live weather radar and severe weather alerts on a map?",
+    "Are there open-source weather maps built with deck.gl?",
+]
