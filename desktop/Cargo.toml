@@ -1,0 +1,28 @@
+[package]
+name = "stormdeck-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# Standalone workspace on purpose: keeps the wgpu/winit dependency tree out
+# of the crates/ lambda workspace that CI and cargo-lambda-cdk build.
+[workspace]
+
+[dependencies]
+# maplibre-rs has no usable crates.io release; pin a known-good main rev.
+# maplibre-winit resolves its `maplibre` path-dep inside the same git checkout.
+maplibre = { git = "https://github.com/maplibre/maplibre-rs", rev = "e2c1c4da8af171f098a9b91213e25fccd00cda17", features = ["thread-safe-futures"] }
+maplibre-winit = { git = "https://github.com/maplibre/maplibre-rs", rev = "e2c1c4da8af171f098a9b91213e25fccd00cda17" }
+
+# Style/paint types in maplibre's public API (versions track maplibre's own).
+csscolorparser = "0.6"
+serde_json = "1"
+
+# Fetch throttling/retry around maplibre's HTTP client (reqwest version
+# tracks maplibre's so the error downcast sees the same type).
+reqwest = { version = "0.12", default-features = false }
+tokio = { version = "1", features = ["sync", "time"] }
+
+env_logger = "0.11"
+log = "0.4"

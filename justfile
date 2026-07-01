@@ -10,6 +10,8 @@ import '.just/common.just'
 mod build '.just/build.just'
 # The IaC (CDK → CloudFormation)
 mod cdk
+# Native desktop map window (maplibre-rs)
+mod desktop
 # OSM basemap extracts: cut + upload
 mod tiles
 # Weather data: local fetch + deployed lambda invoke
