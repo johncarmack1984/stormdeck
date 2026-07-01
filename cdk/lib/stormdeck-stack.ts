@@ -306,6 +306,13 @@ export class StormdeckStack extends Stack {
       domainName:
         '_9fa95b9ad4ef666e498d1b9de17ba1f8.jkddzztszm.acm-validations.aws.',
     });
+    // Bing Webmaster Tools ownership verification — Bing re-checks the
+    // record periodically, so it lives in IaC like the ACM records above.
+    new route53.CnameRecord(this, 'BingVerify', {
+      zone,
+      recordName: '90df4a501a46bca2c63fdbd82d582345',
+      domainName: 'verify.bing.com.',
+    });
 
     // EventBridge Scheduler triggers (14M invocations/month free tier). Every
     // weather job is free GFS GRIB from NODD (no per-call limit) plus the public
