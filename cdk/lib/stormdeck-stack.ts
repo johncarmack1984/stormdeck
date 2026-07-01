@@ -225,6 +225,17 @@ export class StormdeckStack extends Stack {
         ? acm.Certificate.fromCertificateArn(this, 'SiteCert', CERT_ARN_US_EAST_1)
         : undefined,
       defaultRootObject: 'index.html',
+      // The S3 origins can't ListBucket, so a missing key surfaces as 403
+      // AccessDenied; map it to a real 404 (a page the web deploy ships) so
+      // crawlers and users get the right status instead of AccessDenied XML.
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 404,
+          responsePagePath: '/404.html',
+          ttl: Duration.minutes(1),
+        },
+      ],
       defaultBehavior: {
         // deploy-web syncs the built app here: hashed assets immutable,
         // index.html no-cache (browser caching rides those object headers;

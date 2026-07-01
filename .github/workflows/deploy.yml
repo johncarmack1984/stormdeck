@@ -178,17 +178,23 @@ jobs:
       - name: Sync site to S3
         run: |
           BUCKET="stormdeck-$(aws sts get-caller-identity --query Account --output text)"
-          # Hashed assets are immutable; index.html must always revalidate.
+          # Hashed assets are immutable; index.html must always revalidate, and
+          # the unhashed root files (robots/sitemap/404/og) stay refreshable.
           aws s3 sync web/dist "s3://$BUCKET/site" --delete \
-            --exclude index.html \
+            --exclude index.html --exclude robots.txt --exclude sitemap.xml \
+            --exclude 404.html --exclude og.png \
             --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync web/dist "s3://$BUCKET/site" \
+            --exclude "*" --include robots.txt --include sitemap.xml \
+            --include 404.html --include og.png \
+            --cache-control "public, max-age=3600"
           aws s3 cp web/dist/index.html "s3://$BUCKET/site/index.html" \
             --cache-control "no-cache"
-      - name: Invalidate index
+      - name: Invalidate unhashed paths
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ vars.DISTRIBUTION_ID }} \
-            --paths "/" "/index.html"
+            --paths "/" "/index.html" "/robots.txt" "/sitemap.xml" "/404.html" "/og.png"
       # Record the publish as a GitHub Deployment to `production` so the repo's
       # Deployments view tracks what's live. Done via the API, NOT a job-level
       # `environment:` — that key rewrites the OIDC subject to
