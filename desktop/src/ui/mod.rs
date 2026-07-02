@@ -303,8 +303,11 @@ impl<E: Environment> Plugin<E> for UiPlugin {
     ) {
         let draw_graph = graph.get_sub_graph_mut("draw").unwrap();
         draw_graph.add_node("ui_pass", UiPassNode);
-        // Above everything, including the wind overlay.
+        // Above everything, including the wind raster + particle trails.
         draw_graph.add_node_edge("wind_pass", "ui_pass").unwrap();
+        draw_graph
+            .add_node_edge("wind_particle_pass", "ui_pass")
+            .unwrap();
 
         world.resources.insert(UiState {
             wind_enabled: true,
