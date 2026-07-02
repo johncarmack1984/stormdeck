@@ -1,0 +1,90 @@
+{
+  "surface": {
+    "id": "stormdeck.live",
+    "url": "https://stormdeck.live",
+    "kind": "site",
+    "gsc_property": "sc-domain:stormdeck.live",
+    "github_repo": "johncarmack1984/stormdeck",
+    "positioning": "stormdeck.live is a free, open-source (MIT) live weather map: real-time US radar and NWS severe-weather alerts plus global GFS forecasts (temperature, animated wind, precipitation, storm potential) scrubbed on one timeline, built with deck.gl + MapLibre and served from near-free-tier AWS.",
+    "seed_keywords": [
+      "live weather radar map",
+      "live wind map",
+      "animated wind map",
+      "weather alerts map",
+      "global weather forecast map",
+      "gfs model viewer",
+      "open source weather map",
+      "deck.gl weather map"
+    ],
+    "surface_markers": [
+      "stormdeck.live",
+      "stormdeck",
+      "deck.gl",
+      "johncarmack1984"
+    ],
+    "namesake_markers": [
+      "Stream Deck",
+      "Elgato",
+      "Magic: The Gathering",
+      "storm combo deck",
+      "id Software",
+      "Doom",
+      "Quake",
+      "Oculus"
+    ],
+    "geo_probes": [
+      "What is stormdeck.live and what does it show?",
+      "Who built stormdeck, the live weather map, and what is it built with?",
+      "What are some free websites that show live weather radar and severe weather alerts on a map?",
+      "Are there open-source weather maps built with deck.gl?"
+    ],
+    "cite_domains": [
+      "stormdeck.live"
+    ]
+  },
+  "results": [
+    {
+      "provider": "psi",
+      "tier": 0,
+      "status": "ok",
+      "signals": [
+        {
+          "key": "performance_score",
+          "value": 26,
+          "note": ""
+        },
+        {
+          "key": "LCP",
+          "value": "21.4\u00a0s",
+          "note": ""
+        },
+        {
+          "key": "CLS",
+          "value": "0.002",
+          "note": ""
+        },
+        {
+          "key": "TBT",
+          "value": "30,240\u00a0ms",
+          "note": ""
+        },
+        {
+          "key": "SpeedIndex",
+          "value": "14.4\u00a0s",
+          "note": ""
+        }
+      ],
+      "findings": [
+        {
+          "severity": "medium",
+          "code": "psi.performance",
+          "message": "Mobile performance score 26 (<90)."
+        }
+      ],
+      "error": null,
+      "stub_adds": null,
+      "stub_env": [],
+      "stub_contract": null
+    }
+  ]
+}
