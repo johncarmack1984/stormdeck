@@ -36,9 +36,9 @@ use crate::source::tile_base;
 /// (rasterShared WIND_COLOR_MAX).
 const WIND_COLOR_MAX: f32 = 28.0;
 
-/// Fill opacity; default matches the web layer, STORMDECK_WIND_OPACITY
-/// overrides (0 disables the layer without rebuilding).
-fn wind_opacity() -> f32 {
+/// Startup fill opacity — the control panel owns it live; default matches
+/// the web layer, STORMDECK_WIND_OPACITY overrides the default.
+pub fn default_opacity() -> f32 {
     static OPACITY: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
     *OPACITY.get_or_init(|| {
         std::env::var("STORMDECK_WIND_OPACITY")
@@ -78,6 +78,8 @@ struct WindRenderData {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
+    snapshot_ms: i64,
+    hour: i64,
     /// u_min/u_max/v_min/v_max — kept so the per-frame uniform write can
     /// rebuild the whole struct instead of a partial (offset-fragile) write.
     bounds: [f32; 4],
@@ -294,6 +296,8 @@ fn resource_system(
         pipeline,
         bind_group,
         uniform_buffer,
+        snapshot_ms: payload.index.snapshot_ms,
+        hour: payload.hour,
         bounds: [
             payload.index.u_min as f32,
             payload.index.u_max as f32,
@@ -314,33 +318,51 @@ fn uniform_system(
         ..
     }: &mut MapContext,
 ) -> SystemResult {
-    let Some(Initialized(wind)) = world.resources.get::<Eventually<WindRenderData>>() else {
-        return Ok(());
-    };
+    let meta;
+    let need_meta;
+    {
+        let Some(Initialized(wind)) = world.resources.get::<Eventually<WindRenderData>>() else {
+            return Ok(());
+        };
+        // The panel owns the live opacity; fall back to defaults pre-UI.
+        let (opacity, meta_unset) = match world.resources.get::<crate::ui::UiState>() {
+            Some(ui) => (ui.effective_wind_opacity(), ui.wind_meta.is_none()),
+            None => (default_opacity(), false),
+        };
+        meta = (wind.snapshot_ms, wind.hour);
+        need_meta = meta_unset;
 
-    let Some(inverted) = view_state.view_projection().0.invert() else {
-        return Ok(());
-    };
-    let inv_view_proj: [[f32; 4]; 4] = inverted
-        .cast::<f32>()
-        .expect("view projection fits f32")
-        .into();
-    let world_size = (TILE_SIZE * 2.0_f64.powf(view_state.zoom().level() as f64)) as f32;
+        let Some(inverted) = view_state.view_projection().0.invert() else {
+            return Ok(());
+        };
+        let inv_view_proj: [[f32; 4]; 4] = inverted
+            .cast::<f32>()
+            .expect("view projection fits f32")
+            .into();
+        let world_size = (TILE_SIZE * 2.0_f64.powf(view_state.zoom().level() as f64)) as f32;
 
-    let uniforms = WindUniforms {
-        inv_view_proj,
-        world_size,
-        u_min: wind.bounds[0],
-        u_max: wind.bounds[1],
-        v_min: wind.bounds[2],
-        v_max: wind.bounds[3],
-        color_max: WIND_COLOR_MAX,
-        opacity: wind_opacity(),
-        _pad: 0.0,
-    };
-    renderer
-        .queue
-        .write_buffer(&wind.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+        let uniforms = WindUniforms {
+            inv_view_proj,
+            world_size,
+            u_min: wind.bounds[0],
+            u_max: wind.bounds[1],
+            v_min: wind.bounds[2],
+            v_max: wind.bounds[3],
+            color_max: WIND_COLOR_MAX,
+            opacity,
+            _pad: 0.0,
+        };
+        renderer
+            .queue
+            .write_buffer(&wind.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+    }
+
+    // Surface the feed provenance to the panel (separate scope: &mut borrow).
+    if need_meta {
+        if let Some(ui) = world.resources.query_mut::<&mut crate::ui::UiState>() {
+            ui.wind_meta = Some(meta);
+        }
+    }
 
     Ok(())
 }
@@ -367,6 +389,11 @@ impl Node for WindPassNode {
         let Some(Initialized(wind)) = world.resources.get::<Eventually<WindRenderData>>() else {
             return Ok(());
         };
+        if let Some(ui) = world.resources.get::<crate::ui::UiState>() {
+            if ui.effective_wind_opacity() <= 0.0 {
+                return Ok(());
+            }
+        }
 
         let mut pass =
             render_context
