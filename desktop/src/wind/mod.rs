@@ -51,7 +51,7 @@ pub fn default_opacity() -> f32 {
 }
 
 /// weather/windtex/latest.json (contract.rs `WindTexIndex` on the wire).
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct WindTexIndex {
     snapshot_ms: i64,
@@ -78,13 +78,25 @@ struct WindState {
 /// GPU-side state, created once the payload arrives.
 struct WindRenderData {
     pipeline: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
+    sampler: wgpu::Sampler,
     snapshot_ms: i64,
-    hour: i64,
+    /// One raster bind group per uploaded forecast hour; the pass node
+    /// picks the nearest loaded hour to the timeline position.
+    hour_bgs: std::collections::HashMap<i64, wgpu::BindGroup>,
     /// u_min/u_max/v_min/v_max — kept so the per-frame uniform write can
     /// rebuild the whole struct instead of a partial (offset-fragile) write.
     bounds: [f32; 4],
+}
+
+/// Nearest loaded hour to the timeline target (exact match wins).
+pub(crate) fn nearest_hour<'a, V>(
+    map: &'a std::collections::HashMap<i64, V>,
+    target: i64,
+) -> Option<(&'a V, i64)> {
+    map.iter()
+        .min_by_key(|(h, _)| (**h - target).abs())
+        .map(|(h, v)| (v, *h))
 }
 
 #[repr(C)]
@@ -101,34 +113,11 @@ struct WindUniforms {
     _pad: f32,
 }
 
-fn fetch_wind() -> Result<WindPayload, Box<dyn std::error::Error>> {
-    let base = format!("{}/weather/windtex", tile_base());
-
-    let client = reqwest::blocking::Client::new();
-    let index: WindTexIndex = client
-        .get(format!("{base}/latest.json"))
-        .send()?
-        .error_for_status()?
-        .json()?;
-
-    // The forecast step nearest to now (the web timeline's parked position).
-    let now_ms = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)?
-        .as_millis() as i64;
-    let hour = index
-        .hours
-        .iter()
-        .copied()
-        .min_by_key(|h| (index.snapshot_ms + h * 3_600_000 - now_ms).abs())
-        .ok_or("windtex index has no hours")?;
-
-    let png_bytes = client
-        .get(format!("{base}/{}/{}.png", index.snapshot_ms, hour))
-        .send()?
-        .error_for_status()?
-        .bytes()?;
-
-    let decoder = png::Decoder::new(std::io::Cursor::new(&png_bytes[..]));
+fn decode_windtex(
+    png_bytes: &[u8],
+    index: &WindTexIndex,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
     let mut reader = decoder.read_info()?;
     let mut buf = vec![0u8; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf)?;
@@ -149,22 +138,97 @@ fn fetch_wind() -> Result<WindPayload, Box<dyn std::error::Error>> {
     for i in 0..pixels {
         rgba[i * 4..i * 4 + 3].copy_from_slice(&buf[i * 3..i * 3 + 3]);
     }
+    Ok(rgba)
+}
 
-    Ok(WindPayload { index, hour, rgba })
+/// Immutable per-snapshot PNGs are cached on disk so relaunches don't
+/// refetch ~55 MB; other snapshots' dirs are dropped when a new one lands.
+fn cached_png(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    snapshot_ms: i64,
+    hour: i64,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let dir = std::path::PathBuf::from(format!("target/wind-cache/{snapshot_ms}"));
+    let file = dir.join(format!("{hour}.png"));
+    if let Ok(bytes) = std::fs::read(&file) {
+        return Ok(bytes);
+    }
+    let bytes = client
+        .get(format!("{base}/{snapshot_ms}/{hour}.png"))
+        .send()?
+        .error_for_status()?
+        .bytes()?
+        .to_vec();
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(&file, &bytes);
+    Ok(bytes)
+}
+
+/// Fetch every forecast hour, nearest-to-now first, sending one payload per
+/// step; the first arrival lights the layer up, the rest fill the timeline.
+fn fetch_all(tx: &mpsc::Sender<WindPayload>) -> Result<(), Box<dyn std::error::Error>> {
+    let base = format!("{}/weather/windtex", tile_base());
+
+    let client = reqwest::blocking::Client::new();
+    let index: WindTexIndex = client
+        .get(format!("{base}/latest.json"))
+        .send()?
+        .error_for_status()?
+        .json()?;
+
+    // Drop stale snapshot caches.
+    if let Ok(entries) = std::fs::read_dir("target/wind-cache") {
+        for entry in entries.flatten() {
+            if entry.file_name() != index.snapshot_ms.to_string().as_str() {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+
+    let now_ms = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_millis() as i64;
+    let mut hours = index.hours.clone();
+    if hours.is_empty() {
+        return Err("windtex index has no hours".into());
+    }
+    hours.sort_by_key(|h| (index.snapshot_ms + h * 3_600_000 - now_ms).abs());
+
+    for (i, hour) in hours.into_iter().enumerate() {
+        let payload = cached_png(&client, &base, index.snapshot_ms, hour)
+            .and_then(|png| decode_windtex(&png, &index))
+            .map(|rgba| WindPayload {
+                index: index.clone(),
+                hour,
+                rgba,
+            });
+        match payload {
+            Ok(p) => {
+                if i == 0 {
+                    log::info!(
+                        "windtex ready: snapshot {} hour +{}h (timeline loading behind it)",
+                        p.index.snapshot_ms,
+                        p.hour
+                    );
+                }
+                if tx.send(p).is_err() {
+                    return Ok(()); // app shut down
+                }
+            }
+            Err(e) => log::warn!("windtex +{hour}h failed: {e}"),
+        }
+    }
+    log::info!("windtex timeline complete");
+    Ok(())
 }
 
 fn spawn_fetch() -> mpsc::Receiver<WindPayload> {
     let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || match fetch_wind() {
-        Ok(payload) => {
-            log::info!(
-                "windtex ready: snapshot {} hour +{}h",
-                payload.index.snapshot_ms,
-                payload.hour
-            );
-            let _ = tx.send(payload);
+    std::thread::spawn(move || {
+        if let Err(e) = fetch_all(&tx) {
+            log::warn!("wind layer disabled, fetch failed: {e}");
         }
-        Err(e) => log::warn!("wind layer disabled, fetch failed: {e}"),
     });
     rx
 }
@@ -182,151 +246,197 @@ fn resource_system(
         ..
     } = renderer;
 
-    let Some((wind_state, render_data)) = world
-        .resources
-        .query_mut::<(&mut WindState, &mut Eventually<WindRenderData>)>()
-    else {
-        return Err(SystemError::Dependencies);
+    // Drain everything the fetch thread has ready (borrow ends with scope).
+    let payloads: Vec<WindPayload> = {
+        let Some(wind_state) = world.resources.query_mut::<&mut WindState>() else {
+            return Err(SystemError::Dependencies);
+        };
+        std::iter::from_fn(|| wind_state.rx.try_recv().ok()).collect()
     };
-
-    if matches!(render_data, Eventually::Initialized(_)) {
+    if payloads.is_empty() {
         return Ok(());
     }
-    let Ok(payload) = wind_state.rx.try_recv() else {
-        return Ok(());
-    };
 
-    let (width, height) = (payload.index.width, payload.index.height);
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("wind_texture"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8Unorm,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-    queue.write_texture(
-        texture.as_image_copy(),
-        &payload.rgba,
-        wgpu::ImageDataLayout {
-            offset: 0,
-            bytes_per_row: Some(width * 4),
-            rows_per_image: Some(height),
-        },
-        wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-    );
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut timeline: Option<(Vec<i64>, i64)> = None;
 
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("wind_sampler"),
-        // Longitude wraps, latitude clamps — same as the web loader.
-        address_mode_u: wgpu::AddressMode::Repeat,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        ..Default::default()
-    });
-
-    let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("wind_uniforms"),
-        size: std::mem::size_of::<WindUniforms>() as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("wind_shader"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("wind.wgsl").into()),
-    });
-
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("wind_pipeline"),
-        layout: None, // auto layout from the WGSL, like the map pipelines
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: "vs_main",
-            buffers: &[],
-            compilation_options: Default::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: "fs_main",
-            compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: resources.surface.surface_format(),
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-        multiview: None,
-        cache: None,
-    });
-
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("wind_bind_group"),
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
+    for payload in payloads {
+        let (width, height) = (payload.index.width, payload.index.height);
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("wind_texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
             },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(&view),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            texture.as_image_copy(),
+            &payload.rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
             },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::Sampler(&sampler),
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
             },
-        ],
-    });
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    let bounds = [
-        payload.index.u_min as f32,
-        payload.index.u_max as f32,
-        payload.index.v_min as f32,
-        payload.index.v_max as f32,
-    ];
-    render_data.initialize(|| WindRenderData {
-        pipeline,
-        bind_group,
-        uniform_buffer,
-        snapshot_ms: payload.index.snapshot_ms,
-        hour: payload.hour,
-        bounds,
-    });
+        let raster_bg = |pipeline: &wgpu::RenderPipeline,
+                         uniform_buffer: &wgpu::Buffer,
+                         sampler: &wgpu::Sampler| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("wind_bind_group"),
+                layout: &pipeline.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                ],
+            })
+        };
 
-    // Stage two rides the same texture: build the particle system now.
-    let surface_size = (
-        resources.surface.size().width(),
-        resources.surface.size().height(),
-    );
-    let particle_data = particles::build(
-        device,
-        &view,
-        &sampler,
-        resources.surface.surface_format(),
-        surface_size,
-        bounds,
-    );
-    if let Some(slot) = world
-        .resources
-        .query_mut::<&mut Eventually<particles::WindParticleData>>()
-    {
-        slot.initialize(|| particle_data);
+        let Some((render_data, particle_data)) = world.resources.query_mut::<(
+            &mut Eventually<WindRenderData>,
+            &mut Eventually<particles::WindParticleData>,
+        )>() else {
+            return Err(SystemError::Dependencies);
+        };
+
+        match render_data {
+            Eventually::Initialized(data) => {
+                let bg = raster_bg(&data.pipeline, &data.uniform_buffer, &data.sampler);
+                data.hour_bgs.insert(payload.hour, bg);
+                if let Eventually::Initialized(pdata) = particle_data {
+                    pdata.add_hour(device, payload.hour, &view, &data.sampler);
+                }
+            }
+            _ => {
+                let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                    label: Some("wind_sampler"),
+                    // Longitude wraps, latitude clamps — same as the web loader.
+                    address_mode_u: wgpu::AddressMode::Repeat,
+                    address_mode_v: wgpu::AddressMode::ClampToEdge,
+                    mag_filter: wgpu::FilterMode::Linear,
+                    min_filter: wgpu::FilterMode::Linear,
+                    ..Default::default()
+                });
+
+                let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("wind_uniforms"),
+                    size: std::mem::size_of::<WindUniforms>() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+
+                let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("wind_shader"),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("wind.wgsl").into()),
+                });
+
+                let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("wind_pipeline"),
+                    layout: None, // auto layout from the WGSL, like the map pipelines
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: "vs_main",
+                        buffers: &[],
+                        compilation_options: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: "fs_main",
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: resources.surface.surface_format(),
+                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                    cache: None,
+                });
+
+                let bounds = [
+                    payload.index.u_min as f32,
+                    payload.index.u_max as f32,
+                    payload.index.v_min as f32,
+                    payload.index.v_max as f32,
+                ];
+                let mut hour_bgs = std::collections::HashMap::new();
+                hour_bgs.insert(
+                    payload.hour,
+                    raster_bg(&pipeline, &uniform_buffer, &sampler),
+                );
+
+                // Stage two rides the same texture: build the particles now.
+                let surface_size = (
+                    resources.surface.size().width(),
+                    resources.surface.size().height(),
+                );
+                let built = particles::build(
+                    device,
+                    payload.hour,
+                    &view,
+                    &sampler,
+                    resources.surface.surface_format(),
+                    surface_size,
+                    bounds,
+                );
+                particle_data.initialize(|| built);
+
+                render_data.initialize(|| WindRenderData {
+                    pipeline,
+                    uniform_buffer,
+                    sampler,
+                    snapshot_ms: payload.index.snapshot_ms,
+                    hour_bgs,
+                    bounds,
+                });
+
+                timeline = Some((payload.index.hours.clone(), payload.index.snapshot_ms));
+            }
+        }
+    }
+
+    // First arrival also seeds the panel's timeline (parked nearest now).
+    if let Some((hours, snapshot_ms)) = timeline {
+        if let Some(ui) = world.resources.query_mut::<&mut crate::ui::UiState>() {
+            let now_ms = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(snapshot_ms);
+            let pos = hours
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, h)| (snapshot_ms + *h * 3_600_000 - now_ms).abs())
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            ui.timeline_hours = hours;
+            ui.timeline_snapshot_ms = snapshot_ms;
+            ui.timeline_pos = pos;
+        }
     }
 
     Ok(())
@@ -352,7 +462,7 @@ fn uniform_system(
             Some(ui) => (ui.effective_wind_opacity(), ui.wind_meta.is_none()),
             None => (default_opacity(), false),
         };
-        meta = (wind.snapshot_ms, wind.hour);
+        meta = wind.snapshot_ms;
         need_meta = meta_unset;
 
         let Some(inverted) = view_state.view_projection().0.invert() else {
@@ -412,11 +522,16 @@ impl Node for WindPassNode {
         let Some(Initialized(wind)) = world.resources.get::<Eventually<WindRenderData>>() else {
             return Ok(());
         };
+        let mut target_hour = 0;
         if let Some(ui) = world.resources.get::<crate::ui::UiState>() {
             if ui.effective_wind_opacity() <= 0.0 {
                 return Ok(());
             }
+            target_hour = ui.current_hour().unwrap_or(0);
         }
+        let Some((bind_group, _)) = nearest_hour(&wind.hour_bgs, target_hour) else {
+            return Ok(());
+        };
 
         let mut pass =
             render_context
@@ -438,7 +553,7 @@ impl Node for WindPassNode {
                 });
 
         pass.set_pipeline(&wind.pipeline);
-        pass.set_bind_group(0, &wind.bind_group, &[]);
+        pass.set_bind_group(0, bind_group, &[]);
         pass.draw(0..3, 0..1);
 
         Ok(())

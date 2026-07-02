@@ -73,7 +73,10 @@ pub struct WindParticleData {
     point_pipeline: wgpu::RenderPipeline,
     fade_pipeline: wgpu::RenderPipeline,
     composite_pipeline: wgpu::RenderPipeline,
-    compute_bg: wgpu::BindGroup,
+    /// One compute bind group per uploaded forecast hour (each references
+    /// that hour's texture); the node picks nearest to the timeline.
+    compute_bgs: std::collections::HashMap<i64, wgpu::BindGroup>,
+    particle_buf: wgpu::Buffer,
     point_bg: wgpu::BindGroup,
     uniform_buf: wgpu::Buffer,
     trail_uniform_buf: wgpu::Buffer,
@@ -84,6 +87,59 @@ pub struct WindParticleData {
     bounds: [f32; 4],
     last_frame: Instant,
     frame_counter: u32,
+}
+
+impl WindParticleData {
+    /// Register another forecast hour's texture (called as uploads land).
+    pub fn add_hour(
+        &mut self,
+        device: &wgpu::Device,
+        hour: i64,
+        wind_view: &wgpu::TextureView,
+        wind_sampler: &wgpu::Sampler,
+    ) {
+        let bg = compute_bind_group(
+            device,
+            &self.compute_pipeline,
+            &self.uniform_buf,
+            &self.particle_buf,
+            wind_view,
+            wind_sampler,
+        );
+        self.compute_bgs.insert(hour, bg);
+    }
+}
+
+fn compute_bind_group(
+    device: &wgpu::Device,
+    pipeline: &wgpu::ComputePipeline,
+    uniform_buf: &wgpu::Buffer,
+    particle_buf: &wgpu::Buffer,
+    wind_view: &wgpu::TextureView,
+    wind_sampler: &wgpu::Sampler,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("wind_particle_compute_bg"),
+        layout: &pipeline.get_bind_group_layout(0),
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: particle_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(wind_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(wind_sampler),
+            },
+        ],
+    })
 }
 
 fn make_trails(
@@ -162,6 +218,7 @@ fn make_trails(
 
 pub fn build(
     device: &wgpu::Device,
+    first_hour: i64,
     wind_view: &wgpu::TextureView,
     wind_sampler: &wgpu::Sampler,
     surface_format: wgpu::TextureFormat,
@@ -280,28 +337,18 @@ pub fn build(
         }),
     );
 
-    let compute_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("wind_particle_compute_bg"),
-        layout: &compute_pipeline.get_bind_group_layout(0),
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buf.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: particle_buf.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::TextureView(wind_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: wgpu::BindingResource::Sampler(wind_sampler),
-            },
-        ],
-    });
+    let mut compute_bgs = std::collections::HashMap::new();
+    compute_bgs.insert(
+        first_hour,
+        compute_bind_group(
+            device,
+            &compute_pipeline,
+            &uniform_buf,
+            &particle_buf,
+            wind_view,
+            wind_sampler,
+        ),
+    );
     let point_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("wind_particle_point_bg"),
         layout: &point_pipeline.get_bind_group_layout(0),
@@ -340,7 +387,8 @@ pub fn build(
         point_pipeline,
         fade_pipeline,
         composite_pipeline,
-        compute_bg,
+        compute_bgs,
+        particle_buf,
         point_bg,
         uniform_buf,
         trail_uniform_buf,
@@ -492,11 +540,16 @@ impl Node for WindParticlePassNode {
         let Some(Initialized(data)) = world.resources.get::<Eventually<WindParticleData>>() else {
             return Ok(());
         };
+        let mut target_hour = 0;
         if let Some(ui) = world.resources.get::<crate::ui::UiState>() {
             if !ui.wind_enabled {
                 return Ok(());
             }
+            target_hour = ui.current_hour().unwrap_or(0);
         }
+        let Some((compute_bg, _)) = super::nearest_hour(&data.compute_bgs, target_hour) else {
+            return Ok(());
+        };
 
         let cur = usize::from(data.parity.get());
         let prev = 1 - cur;
@@ -510,7 +563,7 @@ impl Node for WindParticlePassNode {
                         timestamp_writes: None,
                     });
             pass.set_pipeline(&data.compute_pipeline);
-            pass.set_bind_group(0, &data.compute_bg, &[]);
+            pass.set_bind_group(0, compute_bg, &[]);
             pass.dispatch_workgroups(PARTICLE_COUNT.div_ceil(64), 1, 1);
         }
 

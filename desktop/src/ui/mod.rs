@@ -29,8 +29,14 @@ use maplibre::{
 pub struct UiState {
     pub wind_enabled: bool,
     pub wind_opacity: f32,
-    /// (snapshot_ms, forecast hour) once the wind fetch lands.
-    pub wind_meta: Option<(i64, i64)>,
+    /// Feed snapshot (GFS run) in unix ms, once the wind fetch lands.
+    pub wind_meta: Option<i64>,
+    /// The forecast-hour axis (sorted, from the feed index) + scrub position.
+    pub timeline_hours: Vec<i64>,
+    pub timeline_snapshot_ms: i64,
+    pub timeline_pos: usize,
+    pub playing: bool,
+    last_advance: Option<std::time::Instant>,
 }
 
 impl UiState {
@@ -40,6 +46,12 @@ impl UiState {
         } else {
             0.0
         }
+    }
+
+    /// The forecast hour the timeline is parked on (None until the feed
+    /// index arrives).
+    pub fn current_hour(&self) -> Option<i64> {
+        self.timeline_hours.get(self.timeline_pos).copied()
     }
 }
 
@@ -118,13 +130,13 @@ pub fn build_panel(ctx: &egui::Context, state: &mut UiState) {
                 ui.label(egui::RichText::new("wind").color(egui::Color32::WHITE));
             });
 
-            if let Some((snapshot_ms, hour)) = state.wind_meta {
+            if let Some(snapshot_ms) = state.wind_meta {
                 let age_min = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map(|d| (d.as_millis() as i64 - snapshot_ms) / 60_000)
                     .unwrap_or(0);
                 ui.label(
-                    egui::RichText::new(format!("GFS · {age_min} min ago · +{hour}h"))
+                    egui::RichText::new(format!("GFS · {age_min} min ago"))
                         .size(10.5)
                         .color(egui::Color32::from_gray(150)),
                 );
@@ -168,6 +180,53 @@ pub fn build_panel(ctx: &egui::Context, state: &mut UiState) {
                 );
                 ui.add(egui::Slider::new(&mut state.wind_opacity, 0.0..=1.0).show_value(false));
             });
+
+            // Timeline: play/scrub the 7-day forecast axis (one step per
+            // 3-hourly texture, same axis the web app scrubs).
+            if !state.timeline_hours.is_empty() {
+                ui.separator();
+
+                let last = state.timeline_hours.len() - 1;
+                ui.horizontal(|ui| {
+                    let icon = if state.playing { "⏸" } else { "▶" };
+                    if ui.button(icon).clicked() {
+                        state.playing = !state.playing;
+                        state.last_advance = None;
+                    }
+                    let mut pos = state.timeline_pos;
+                    ui.add(egui::Slider::new(&mut pos, 0..=last).show_value(false));
+                    state.timeline_pos = pos;
+                });
+
+                if state.playing {
+                    let now = std::time::Instant::now();
+                    let due = state
+                        .last_advance
+                        .map(|t| now.duration_since(t).as_millis() >= 350)
+                        .unwrap_or(true);
+                    if due {
+                        state.timeline_pos = (state.timeline_pos + 1) % (last + 1);
+                        state.last_advance = Some(now);
+                    }
+                }
+
+                if let Some(hour) = state.current_hour() {
+                    let valid_ms = state.timeline_snapshot_ms + hour * 3_600_000;
+                    let label = chrono::DateTime::from_timestamp_millis(valid_ms)
+                        .map(|utc| {
+                            utc.with_timezone(&chrono::Local)
+                                .format("%a %l %p")
+                                .to_string()
+                                .replace("  ", " ")
+                        })
+                        .unwrap_or_default();
+                    ui.label(
+                        egui::RichText::new(format!("{label} · +{hour}h"))
+                            .size(10.5)
+                            .color(egui::Color32::from_gray(150)),
+                    );
+                }
+            }
         });
 }
 
@@ -313,6 +372,11 @@ impl<E: Environment> Plugin<E> for UiPlugin {
             wind_enabled: true,
             wind_opacity: crate::wind::default_opacity(),
             wind_meta: None,
+            timeline_hours: Vec::new(),
+            timeline_snapshot_ms: 0,
+            timeline_pos: 0,
+            playing: false,
+            last_advance: None,
         });
         world.resources.insert(UiFrameData::default());
 
