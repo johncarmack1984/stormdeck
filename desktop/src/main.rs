@@ -23,6 +23,7 @@ use maplibre::{
 mod input;
 mod source;
 mod style;
+mod ui;
 mod wind;
 mod window;
 
@@ -66,6 +67,8 @@ fn main() {
                 Box::new(maplibre::sdf::SdfPlugin::<DefaultVectorTransferables>::default()),
                 // GFS wind-speed raster over the basemap (see wind/).
                 Box::new(wind::WindPlugin),
+                // Control panel, painted above everything (see ui/).
+                Box::new(ui::UiPlugin),
             ],
         )
         .expect("failed to create map");

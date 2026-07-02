@@ -8,7 +8,7 @@
 //! (hardcoded/absent upstream — see input/), and the window opens at a
 //! map-worthy default size instead of 800x800.
 
-use std::{marker::PhantomData, time::Instant};
+use std::{marker::PhantomData, sync::Arc, time::Instant};
 
 use maplibre::{
     environment::{Environment, OffscreenKernel},
@@ -58,18 +58,22 @@ impl MapWindowConfig for StormdeckMapWindowConfig {
                     .with_inner_size(Size::Logical(LogicalSize::new(1200.0, 800.0))),
             )
             .map_err(|_| WindowCreateError::Window)?;
+        // Shared with the event loop so it can host egui against the
+        // concrete winit window (map.window() is generic in run()).
+        let window = Arc::new(window);
 
         Ok(StormdeckMapWindow {
-            window,
+            window: window.clone(),
             event_loop: Some(StormdeckEventLoop {
                 event_loop: raw_event_loop,
+                window,
             }),
         })
     }
 }
 
 pub struct StormdeckMapWindow {
-    window: winit::window::Window,
+    window: Arc<winit::window::Window>,
     event_loop: Option<StormdeckEventLoop>,
 }
 
@@ -108,6 +112,7 @@ impl HeadedMapWindow for StormdeckMapWindow {
 
 pub struct StormdeckEventLoop {
     event_loop: winit::event_loop::EventLoop<()>,
+    window: Arc<winit::window::Window>,
 }
 
 impl EventLoop<()> for StormdeckEventLoop {
@@ -124,6 +129,21 @@ impl EventLoop<()> for StormdeckEventLoop {
         let mut input_controller = InputController::new(0.2, 100.0, ZOOM_SENSITIVITY);
         let mut scale_factor = map.window().scale_factor();
 
+        // egui hosts the control panel; it sees every window event first and
+        // hands the frame's primitives to UiPlugin via the UiFrameData
+        // resource (uploaded + painted inside the render schedule/graph).
+        let window = self.window;
+        let egui_ctx = egui::Context::default();
+        egui_ctx.set_visuals(egui::Visuals::dark());
+        let mut egui_state = egui_winit::State::new(
+            egui_ctx.clone(),
+            egui::ViewportId::ROOT,
+            window.as_ref(),
+            Some(scale_factor as f32),
+            None,
+            None,
+        );
+
         #[allow(deprecated)]
         let result = self.event_loop.run(move |event, window_target| {
             match event {
@@ -131,6 +151,8 @@ impl EventLoop<()> for StormdeckEventLoop {
                     ref event,
                     window_id,
                 } if window_id == map.window().id().into() => {
+                    let ui_response = egui_state.on_window_event(&window, event);
+
                     if let WindowEvent::RedrawRequested = event {
                         if !map.is_initialized() {
                             return;
@@ -139,6 +161,38 @@ impl EventLoop<()> for StormdeckEventLoop {
                         let now = Instant::now();
                         let dt = now - last_render_time;
                         last_render_time = now;
+
+                        // Build the egui frame against the shared UI state...
+                        let raw_input = egui_state.take_egui_input(&window);
+                        let full_output = egui_ctx.run(raw_input, |ctx| {
+                            if let Ok(map_context) = map.context_mut() {
+                                if let Some(ui_state) = map_context
+                                    .world
+                                    .resources
+                                    .query_mut::<&mut crate::ui::UiState>()
+                                {
+                                    crate::ui::build_panel(ctx, ui_state);
+                                }
+                            }
+                        });
+                        egui_state.handle_platform_output(&window, full_output.platform_output);
+                        let primitives =
+                            egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+
+                        // ...and stage it for UiPlugin's upload system + pass.
+                        let size = window.inner_size();
+                        if let Ok(map_context) = map.context_mut() {
+                            if let Some(frame) = map_context
+                                .world
+                                .resources
+                                .query_mut::<&mut crate::ui::UiFrameData>()
+                            {
+                                frame.primitives = primitives;
+                                frame.textures_delta.append(full_output.textures_delta);
+                                frame.pixels_per_point = full_output.pixels_per_point;
+                                frame.size = [size.width, size.height];
+                            }
+                        }
 
                         if let Ok(map_context) = map.context_mut() {
                             input_controller.update_state(map_context, dt);
@@ -158,7 +212,8 @@ impl EventLoop<()> for StormdeckEventLoop {
                         map.window().request_redraw();
                     }
 
-                    if !input_controller.window_input(event, scale_factor) {
+                    if !(ui_response.consumed || input_controller.window_input(event, scale_factor))
+                    {
                         match event {
                             WindowEvent::CloseRequested
                             | WindowEvent::KeyboardInput {

@@ -26,6 +26,10 @@ This crate is deliberately a **standalone cargo workspace**: the wgpu/winit tree
 
 The first weather layer is live: `src/wind/` ports the web app's `WindRasterLayer` to WGSL. A fetch thread pulls `weather/windtex/latest.json` and the forecast-hour u/v PNG nearest to now (the same GFS feed the web timeline scrubs), and a render-graph pass after the map draws one fullscreen triangle whose fragment shader unprojects each pixel to the map plane, inverts web mercator to lng/lat, samples the equirect texture, and colormaps `length(u,v)` with the web's exact ramp (saturating at 28 m/s). `STORMDECK_WIND_OPACITY` overrides the 0.6 default (0 disables it). Limits for now: the hour is picked once at launch (no timeline), and there's no particle animation yet — the ramp output is gamma-decoded before write since the wgpu surface is sRGB, unlike the web's framebuffer.
 
+## Control panel
+
+The upper-left card is egui (0.29 — the wgpu-22 pairing that shares maplibre's GPU types), painted as the last render-graph pass. The event loop feeds winit events to egui first (consumed events never reach the map controls), builds the panel against a shared `UiState` resource, and hands the frame's meshes to an upload system + pass node in `src/ui/`. Today it carries the wind toggle, the 0–28 m/s legend, feed provenance (run age + forecast hour), and a live fill-opacity slider; every future layer/timeline control lands in the same place.
+
 ## Day-one scope and what's next
 
 This is a beachhead: basemap in a window, plus the wind-speed raster. Known limits — no overzoom (past z6 outside the region bbox goes empty), flat landcover/landuse colors, label rendering is whatever maplibre-rs' SDF pass can do today. Next steps, in rough order: the wind particle pass (deck-wind-layer's advection, as a wgpu compute + trails accumulation), more weather feeds (alerts/temps/precip on the same contract types), a timeline, and upstreaming a style-driven tile source so `source.rs` can shrink.
