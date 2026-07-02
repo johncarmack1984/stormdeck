@@ -8,11 +8,17 @@ A native desktop window for stormdeck, rendering the same martin-served OpenStre
 just desktop run     # or: cargo run (from this folder)
 ```
 
-A window opens over Dallas at z6, pulling vector tiles from `https://stormdeck.live` (`world` z0–6 planet, `region` full-detail bbox past z6). Drag to pan, scroll to zoom. Tiles are HTTP-cached under `target/tile-cache/`. `STORMDECK_TILE_BASE` points it elsewhere — `just desktop run-local` targets a `just dev` martin on `:3030` — and `STORMDECK_START_ZOOM` overrides the starting zoom (handy for landing straight in the region detail, e.g. `STORMDECK_START_ZOOM=9`).
+A window opens over Dallas at z6, pulling vector tiles from `https://stormdeck.live` (`world` z0–6 planet, `region` full-detail bbox past z6).
+
+**Controls:** drag to pan · scroll or trackpad-pinch to zoom (anchored at the cursor) · `WASD`/arrow keys pan · `i`/`+` and `k`/`-` step zoom · `Esc` or the close button quits.
+
+Tiles are HTTP-cached under `target/tile-cache/`. `STORMDECK_TILE_BASE` points it elsewhere — `just desktop run-local` targets a `just dev` martin on `:3030` — and `STORMDECK_START_ZOOM` overrides the starting zoom (handy for landing straight in the region detail, e.g. `STORMDECK_START_ZOOM=9`).
 
 ## How it works
 
 maplibre-rs hardcodes its demo tile source inside the stock `VectorPlugin`, so `src/source.rs` registers a copy of that request system pointed at stormdeck's endpoints, ordered ahead of the stock one (which then sees each tile already claimed and skips it). `src/style.rs` is a hand-reduced protomaps **light**-flavor style — maplibre-rs supports flat colors per source layer, not the kind-based filters the web style uses, so continents read correctly but with less nuance than the browser map.
+
+The windowing/input layer (`src/window.rs`, `src/input/`) is vendored from maplibre-winit rather than depended on: upstream hardcodes a zoom sensitivity that makes a full trackpad swipe worth half a level, has no pinch-gesture handling at all (an empty `TODO` handler), and never requests the first redraw (its `Resumed` arm is a `FIXME`), which left occluded launches permanently black. All three are fixed in the vendored copy and are candidates to upstream.
 
 This crate is deliberately a **standalone cargo workspace**: the wgpu/winit tree stays out of `crates/` (the lambda workspace that CI lints and cargo-lambda-cdk compiles at synth).
 

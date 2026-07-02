@@ -13,7 +13,12 @@ publish = false
 # maplibre-rs has no usable crates.io release; pin a known-good main rev.
 # maplibre-winit resolves its `maplibre` path-dep inside the same git checkout.
 maplibre = { git = "https://github.com/maplibre/maplibre-rs", rev = "e2c1c4da8af171f098a9b91213e25fccd00cda17", features = ["thread-safe-futures"] }
-maplibre-winit = { git = "https://github.com/maplibre/maplibre-rs", rev = "e2c1c4da8af171f098a9b91213e25fccd00cda17" }
+
+# The windowing/input layer is vendored (src/window.rs, src/input/) instead
+# of using maplibre-winit — it hardcodes input sensitivity, lacks pinch, and
+# never primes the first redraw. Versions track maplibre's workspace pins.
+winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
+cgmath = "0.18"
 
 # Style/paint types in maplibre's public API (versions track maplibre's own).
 csscolorparser = "0.6"
