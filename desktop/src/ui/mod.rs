@@ -117,7 +117,11 @@ pub fn build_panel(ctx: &egui::Context, state: &mut UiState) {
         .resizable(false)
         .frame(frame)
         .show(ctx, |ui| {
+            // Clamp the card to its content: full-width widgets (separator,
+            // sliders) otherwise ratchet the auto-sized window wider.
+            ui.set_max_width(170.0);
             ui.spacing_mut().item_spacing.y = 6.0;
+            ui.spacing_mut().slider_width = 110.0;
             ui.label(
                 egui::RichText::new("stormdeck")
                     .size(16.0)
