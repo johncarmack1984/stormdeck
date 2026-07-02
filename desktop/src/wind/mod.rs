@@ -32,6 +32,8 @@ use serde::Deserialize;
 
 use crate::source::tile_base;
 
+pub mod particles;
+
 /// m/s at which the colormap saturates — matches the web legend
 /// (rasterShared WIND_COLOR_MAX).
 const WIND_COLOR_MAX: f32 = 28.0;
@@ -292,19 +294,40 @@ fn resource_system(
         ],
     });
 
+    let bounds = [
+        payload.index.u_min as f32,
+        payload.index.u_max as f32,
+        payload.index.v_min as f32,
+        payload.index.v_max as f32,
+    ];
     render_data.initialize(|| WindRenderData {
         pipeline,
         bind_group,
         uniform_buffer,
         snapshot_ms: payload.index.snapshot_ms,
         hour: payload.hour,
-        bounds: [
-            payload.index.u_min as f32,
-            payload.index.u_max as f32,
-            payload.index.v_min as f32,
-            payload.index.v_max as f32,
-        ],
+        bounds,
     });
+
+    // Stage two rides the same texture: build the particle system now.
+    let surface_size = (
+        resources.surface.size().width(),
+        resources.surface.size().height(),
+    );
+    let particle_data = particles::build(
+        device,
+        &view,
+        &sampler,
+        resources.surface.surface_format(),
+        surface_size,
+        bounds,
+    );
+    if let Some(slot) = world
+        .resources
+        .query_mut::<&mut Eventually<particles::WindParticleData>>()
+    {
+        slot.initialize(|| particle_data);
+    }
 
     Ok(())
 }
@@ -439,13 +462,23 @@ impl<E: Environment> Plugin<E> for WindPlugin {
         draw_graph
             .add_node_edge("translucent_pass", "wind_pass")
             .unwrap();
+        // Particles composite over the raster (and under the UI, whose
+        // plugin adds its own edge onto this node).
+        draw_graph.add_node("wind_particle_pass", particles::WindParticlePassNode);
+        draw_graph
+            .add_node_edge("wind_pass", "wind_particle_pass")
+            .unwrap();
 
         world.resources.insert(WindState { rx: spawn_fetch() });
         world
             .resources
             .insert(Eventually::<WindRenderData>::Uninitialized);
+        world
+            .resources
+            .insert(Eventually::<particles::WindParticleData>::Uninitialized);
 
         schedule.add_system_to_stage(RenderStageLabel::Prepare, resource_system);
         schedule.add_system_to_stage(RenderStageLabel::Queue, uniform_system);
+        schedule.add_system_to_stage(RenderStageLabel::Queue, particles::frame_system);
     }
 }
