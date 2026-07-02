@@ -18,24 +18,26 @@ use maplibre::{
         RenderPlugin,
     },
     vector::{DefaultVectorTransferables, VectorPlugin},
-    window::HeadedMapWindow,
 };
-use maplibre_winit::{WinitEnvironment, WinitMapWindowConfig};
 
+mod input;
 mod source;
 mod style;
+mod window;
+
+use window::{StormdeckEnvironment, StormdeckMapWindowConfig};
 
 fn main() {
     env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
 
     run_multithreaded(async {
-        type Env<S, HC, APC> = WinitEnvironment<S, HC, ReqwestOffscreenKernelEnvironment, APC, ()>;
+        type Env<S, HC, APC> = StormdeckEnvironment<S, HC, ReqwestOffscreenKernelEnvironment, APC>;
 
         let cache_path = Some(source::http_cache_dir());
         let client = ReqwestHttpClient::new(cache_path.clone());
 
         let kernel: Kernel<Env<_, _, _>> = KernelBuilder::new()
-            .with_map_window_config(WinitMapWindowConfig::new("stormdeck".to_string()))
+            .with_map_window_config(StormdeckMapWindowConfig::new("stormdeck".to_string()))
             .with_http_client(client)
             .with_apc(SchedulerAsyncProcedureCall::new(
                 TokioScheduler::new(),
@@ -68,12 +70,6 @@ fn main() {
         map.initialize_renderer()
             .await
             .expect("failed to initialize renderer");
-
-        // The upstream event loop only redraws after a RedrawRequested and
-        // re-requests from inside the handler; nothing requests the FIRST
-        // one (Resumed is an upstream FIXME), so an occluded launch renders
-        // nothing and never fetches a tile. Prime the pump before running.
-        map.window().request_redraw();
 
         map.window_mut()
             .take_event_loop()
