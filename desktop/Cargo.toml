@@ -19,15 +19,24 @@ maplibre = { git = "https://github.com/maplibre/maplibre-rs", rev = "e2c1c4da8af
 # never primes the first redraw. Versions track maplibre's workspace pins.
 winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
 cgmath = "0.18"
+# Must stay in lockstep with maplibre's pin so GPU types unify.
+wgpu = "22.1.0"
 
 # Style/paint types in maplibre's public API (versions track maplibre's own).
 csscolorparser = "0.6"
 serde_json = "1"
 
 # Fetch throttling/retry around maplibre's HTTP client (reqwest version
-# tracks maplibre's so the error downcast sees the same type).
-reqwest = { version = "0.12", default-features = false }
+# tracks maplibre's so the error downcast sees the same type; the TLS
+# backend comes from maplibre's own reqwest features). `blocking` serves the
+# wind-texture fetch thread.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
 tokio = { version = "1", features = ["sync", "time"] }
+
+# Wind layer: decode the windtex PNG, type its index JSON, pack uniforms.
+png = "0.17"
+serde = { version = "1", features = ["derive"] }
+bytemuck = { version = "1", features = ["derive"] }
 
 env_logger = "0.11"
 log = "0.4"

@@ -42,8 +42,8 @@ use maplibre::{
 
 /// Where martin serves the `world`/`region` archives. Defaults to prod;
 /// override with STORMDECK_TILE_BASE (e.g. http://localhost:3030 from
-/// `just dev`).
-fn tile_base() -> String {
+/// `just dev`). The wind layer derives its weather base from this too.
+pub fn tile_base() -> String {
     std::env::var("STORMDECK_TILE_BASE").unwrap_or_else(|_| "https://stormdeck.live".to_string())
 }
 

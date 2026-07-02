@@ -23,6 +23,7 @@ use maplibre::{
 mod input;
 mod source;
 mod style;
+mod wind;
 mod window;
 
 use window::{StormdeckEnvironment, StormdeckMapWindowConfig};
@@ -63,6 +64,8 @@ fn main() {
                 Box::new(source::StormdeckSourcePlugin::<DefaultVectorTransferables>::default()),
                 Box::new(VectorPlugin::<DefaultVectorTransferables>::default()),
                 Box::new(maplibre::sdf::SdfPlugin::<DefaultVectorTransferables>::default()),
+                // GFS wind-speed raster over the basemap (see wind/).
+                Box::new(wind::WindPlugin),
             ],
         )
         .expect("failed to create map");
